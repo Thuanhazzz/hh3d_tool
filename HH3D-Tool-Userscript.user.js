@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.1
+// @version      1.0.2
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -3943,7 +3943,7 @@
             return formatResult("linhthach", { status:"warning", nextTime:120000, message:`❌ ${err.message}` });
             }
         },  
-};
+        };
 
     // ============================================================================
     // TASK SCHEDULER
