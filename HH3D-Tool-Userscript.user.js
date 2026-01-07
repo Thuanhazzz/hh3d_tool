@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.4
+// @version      1.0.5
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -4972,6 +4972,129 @@ console.log('🎮 HH3D Tool v2.0 Loaded - Auto-rerun system enabled');
 console.log('✅ Content script ready on:', window.location.href);
 console.log('📋 Available tasks:', Object.keys(TASKS));
 
+// ============================================================================
+// TASK SCHEDULER FOR USERSCRIPT (must be defined before UI)
+// ============================================================================
+class TaskScheduler {
+    constructor() {
+        this.isRunning = false;
+        this.taskResults = {};
+        this.runningTasks = new Set();
+        this.checkInterval = null;
+    }
+
+    async init() {
+        const isRunning = Storage.get('isRunning') || false;
+        const taskResults = Storage.get('taskResults') || {};
+        const taskStates = Storage.get('taskStates') || {};
+        
+        this.isRunning = isRunning;
+        this.taskResults = taskResults;
+        
+        if (taskStates) {
+            Object.keys(taskStates).forEach(key => {
+                if (taskStates[key] && TASKS[key]) {
+                    this.runningTasks.add(key);
+                }
+            });
+        }
+        
+        console.log('📊 Scheduler initialized:', {
+            isRunning: this.isRunning,
+            runningTasks: Array.from(this.runningTasks)
+        });
+    }
+
+    async start() {
+        if (this.isRunning) {
+            console.log('⚠️ Already running');
+            return;
+        }
+        
+        this.isRunning = true;
+        Storage.set('isRunning', true);
+        console.log('▶️ Scheduler started');
+        
+        // Run all enabled tasks
+        for (const key of this.runningTasks) {
+            await this.runTask(key);
+            await wait(2000);
+        }
+        
+        // Start interval to check for rerun
+        this.checkInterval = setInterval(() => {
+            this.checkReruns();
+        }, 10000);
+    }
+
+    async stop() {
+        if (!this.isRunning) {
+            console.log('⚠️ Already stopped');
+            return;
+        }
+        
+        this.isRunning = false;
+        Storage.set('isRunning', false);
+        
+        if (this.checkInterval) {
+            clearInterval(this.checkInterval);
+            this.checkInterval = null;
+        }
+        
+        // Clear all timeouts
+        rerunTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        rerunTimeouts.clear();
+        
+        console.log('⏹️ Scheduler stopped');
+    }
+
+    async runTask(key) {
+        if (!TASKS[key]) {
+            console.warn(`⚠️ Task ${key} not found`);
+            return;
+        }
+        
+        console.log(`🏃 Running task: ${key}`);
+        updateTaskStatus(key, { status: 'running', message: 'Đang chạy...', percent: 0 });
+        
+        try {
+            const config = await loadTaskConfig(key);
+            const result = await TASKS[key](config);
+            updateTaskStatus(key, result);
+            console.log(`✅ Task ${key} completed:`, result.message);
+            
+            if (result.status !== 'done' && result.nextTime && result.nextTime > 0) {
+                setupTaskRerun(key, result.nextTime);
+            }
+        } catch (error) {
+            console.error(`❌ Task ${key} error:`, error);
+            updateTaskStatus(key, {
+                status: 'error',
+                message: 'Lỗi: ' + error.message,
+                percent: 0
+            });
+            setupTaskRerun(key, 60000);
+        }
+    }
+
+    async checkReruns() {
+        if (!this.isRunning) return;
+        
+        const now = Date.now();
+        for (const key of this.runningTasks) {
+            const result = this.taskResults[key];
+            if (result && result.nextTime && result.nextTime <= now) {
+                console.log(`⏰ Time to rerun ${key}`);
+                await this.runTask(key);
+                await wait(2000);
+            }
+        }
+    }
+}
+
+// Initialize scheduler (MUST be before UI creation)
+const scheduler = new TaskScheduler();
+
 // ==================== FLOATING UI PANEL ====================
 const UI_TASK_NAMES = {
   checkin: '📅 Điểm Danh',
@@ -5074,6 +5197,42 @@ const UI_DEFAULT_TASK_STATES = {
     panelVisible = false;
     panel.style.display = 'none';
   };
+
+  // ⭐ ATTACH EVENT HANDLERS FOR START/STOP BUTTONS (ngay sau khi panel được append)
+  console.log('🔧 Attaching Start/Stop/Settings event handlers...');
+  
+  const startBtn = document.getElementById('hh3d-start-btn');
+  if (startBtn) {
+    startBtn.onclick = async () => {
+      console.log('▶️ Start clicked');
+      await scheduler.start();
+    };
+    console.log('✅ Start button handler attached');
+  } else {
+    console.error('❌ Start button not found!');
+  }
+
+  const stopBtn = document.getElementById('hh3d-stop-btn');
+  if (stopBtn) {
+    stopBtn.onclick = async () => {
+      console.log('⏹️ Stop clicked');
+      await scheduler.stop();
+    };
+    console.log('✅ Stop button handler attached');
+  } else {
+    console.error('❌ Stop button not found!');
+  }
+
+  const settingsBtn = document.getElementById('hh3d-general-settings-btn');
+  if (settingsBtn) {
+    settingsBtn.onclick = () => {
+      console.log('⚙️ General settings clicked');
+      openGeneralSettingsModal();
+    };
+    console.log('✅ Settings button handler attached');
+  } else {
+    console.error('❌ Settings button not found!');
+  }
 
 // Initialize task states
 safeStorageGet(['taskStates'], (data) => {
@@ -6574,182 +6733,17 @@ function updateUIPanel() {
   });
 }
 
-// ============================================================================
-// TASK SCHEDULER FOR USERSCRIPT
-// ============================================================================
-class TaskScheduler {
-    constructor() {
-        this.isRunning = false;
-        this.taskResults = {};
-        this.runningTasks = new Set();
-        this.checkInterval = null;
-    }
-
-    async init() {
-        const data = await Storage.get(['isRunning', 'taskResults', 'taskStates']);
-        this.isRunning = data.isRunning || false;
-        this.taskResults = data.taskResults || {};
-        
-        // Load task states from storage
-        if (data.taskStates) {
-            Object.keys(data.taskStates).forEach(key => {
-                if (TASKS[key]) {
-                    // Update enabled state based on storage
-                }
-            });
-        }
-    }
-
-    async saveState() {
-        await Storage.set({ 
-            isRunning: this.isRunning,
-            taskResults: this.taskResults
-        });
-    }
-
-    async start() {
-        console.log('▶️ Starting scheduler...');
-        this.isRunning = true;
-        await this.saveState();
-        
-        // Run all enabled tasks immediately
-        await this.runAllTasks();
-        
-        // Setup interval to check and rerun tasks
-        this.checkInterval = setInterval(() => this.checkAndRerun(), 30000);
-        updateUIPanel();
-    }
-
-    async stop() {
-        console.log('⏹️ Stopping scheduler...');
-        this.isRunning = false;
-        await this.saveState();
-        
-        if (this.checkInterval) {
-            clearInterval(this.checkInterval);
-            this.checkInterval = null;
-        }
-        
-        this.runningTasks.clear();
-        updateUIPanel();
-    }
-
-    async runAllTasks() {
-        const enabledTasks = ['checkin', 'phucloi', 'tele', 'thiluyen', 'hoangvuc', 'luanvo', 'vandap', 'tienduyen', 'khoangmach', 'dothach', 'vongquay', 'hdhn', 'duatop', 'bicanh', 'tangqua', 'noel', 'trungthu', 'linhthach'];
-        
-        for (const taskKey of enabledTasks) {
-            if (TASKS[taskKey] && !this.runningTasks.has(taskKey)) {
-                await this.runTask(taskKey);
-                await wait(2000); // Delay between tasks
-            }
-        }
-    }
-
-    async runTask(taskKey) {
-        const task = TASKS[taskKey];
-        if (!task || this.runningTasks.has(taskKey)) return;
-        
-        console.log(`▶️ Running ${taskKey}...`);
-        this.runningTasks.add(taskKey);
-        
-        try {
-            // Update status to running
-            this.taskResults[taskKey] = formatResult(taskKey, { 
-                status: 'running',
-                message: '⏳ Đang chạy...'
-            });
-            updateUIPanel();
-            
-            const result = await task();
-            this.taskResults[taskKey] = result;
-            
-            console.log(`✅ ${taskKey} completed:`, result.message);
-            
-            // Schedule next run if needed
-            if (result.nextTime > 0) {
-                setTimeout(() => {
-                    if (this.isRunning) {
-                        this.runTask(taskKey);
-                    }
-                }, result.nextTime);
-            }
-        } catch (err) {
-            console.error(`❌ ${taskKey} error:`, err);
-            this.taskResults[taskKey] = formatResult(taskKey, {
-                status: 'error',
-                message: `❌ ${err.message}`
-            });
-        } finally {
-            this.runningTasks.delete(taskKey);
-            await this.saveState();
-            updateUIPanel();
-        }
-    }
-
-    async checkAndRerun() {
-        if (!this.isRunning) return;
-        
-        const now = Date.now();
-        for (const [key, result] of Object.entries(this.taskResults)) {
-            const task = TASKS[key];
-            if (!task || this.runningTasks.has(key)) continue;
-            
-            // Check if it's time to rerun
-            if (result.nextRunAt && result.nextRunAt <= now) {
-                console.log(`⏰ Time to rerun ${key}`);
-                await this.runTask(key);
-                await wait(2000);
-            }
-        }
-    }
-}
+// Auto update UI every second
+setInterval(updateUIPanel, 1000);
 
 // Initialize scheduler
-const scheduler = new TaskScheduler();
-
-// Wait for DOM to be ready before attaching event handlers
-window.addEventListener('load', () => {
-    console.log('🔧 Attaching event handlers...');
-    
-    // Start button
-    const startBtn = document.getElementById('hh3d-start-btn');
-    if (startBtn) {
-        startBtn.onclick = async () => {
-            console.log('▶️ Start clicked');
-            await scheduler.start();
-        };
+(async () => {
+    await scheduler.init();
+    if (scheduler.isRunning) {
+        scheduler.start();
     }
-
-    // Stop button
-    const stopBtn = document.getElementById('hh3d-stop-btn');
-    if (stopBtn) {
-        stopBtn.onclick = async () => {
-            console.log('⏹️ Stop clicked');
-            await scheduler.stop();
-        };
-    }
-
-    // General settings button
-    const settingsBtn = document.getElementById('hh3d-general-settings-btn');
-    if (settingsBtn) {
-        settingsBtn.onclick = () => {
-            console.log('⚙️ General settings clicked');
-            openGeneralSettingsModal();
-        };
-    }
-
-    // Auto update every second
-    setInterval(updateUIPanel, 1000);
-
-    // Initialize scheduler
-    (async () => {
-        await scheduler.init();
-        if (scheduler.isRunning) {
-            scheduler.start();
-        }
-        updateUIPanel();
-        console.log('✅ HH3D Tool Userscript Ready!');
-    })();
-});
+    updateUIPanel();
+    console.log('✅ HH3D Tool Userscript Ready!');
+})();
 
 })();
