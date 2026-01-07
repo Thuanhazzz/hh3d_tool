@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.5
+// @version      1.0.6
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -5198,41 +5198,43 @@ const UI_DEFAULT_TASK_STATES = {
     panel.style.display = 'none';
   };
 
-  // ⭐ ATTACH EVENT HANDLERS FOR START/STOP BUTTONS (ngay sau khi panel được append)
-  console.log('🔧 Attaching Start/Stop/Settings event handlers...');
-  
-  const startBtn = document.getElementById('hh3d-start-btn');
-  if (startBtn) {
-    startBtn.onclick = async () => {
-      console.log('▶️ Start clicked');
-      await scheduler.start();
-    };
-    console.log('✅ Start button handler attached');
-  } else {
-    console.error('❌ Start button not found!');
-  }
+  // ⭐ ATTACH EVENT HANDLERS FOR START/STOP BUTTONS (wrap in setTimeout to ensure DOM is ready)
+  setTimeout(() => {
+    console.log('🔧 Attaching Start/Stop/Settings event handlers...');
+    
+    const startBtn = document.getElementById('hh3d-start-btn');
+    if (startBtn) {
+      startBtn.onclick = async () => {
+        console.log('▶️ Start clicked');
+        await scheduler.start();
+      };
+      console.log('✅ Start button handler attached');
+    } else {
+      console.error('❌ Start button not found!');
+    }
 
-  const stopBtn = document.getElementById('hh3d-stop-btn');
-  if (stopBtn) {
-    stopBtn.onclick = async () => {
-      console.log('⏹️ Stop clicked');
-      await scheduler.stop();
-    };
-    console.log('✅ Stop button handler attached');
-  } else {
-    console.error('❌ Stop button not found!');
-  }
+    const stopBtn = document.getElementById('hh3d-stop-btn');
+    if (stopBtn) {
+      stopBtn.onclick = async () => {
+        console.log('⏹️ Stop clicked');
+        await scheduler.stop();
+      };
+      console.log('✅ Stop button handler attached');
+    } else {
+      console.error('❌ Stop button not found!');
+    }
 
-  const settingsBtn = document.getElementById('hh3d-general-settings-btn');
-  if (settingsBtn) {
-    settingsBtn.onclick = () => {
-      console.log('⚙️ General settings clicked');
-      openGeneralSettingsModal();
-    };
-    console.log('✅ Settings button handler attached');
-  } else {
-    console.error('❌ Settings button not found!');
-  }
+    const settingsBtn = document.getElementById('hh3d-general-settings-btn');
+    if (settingsBtn) {
+      settingsBtn.onclick = () => {
+        console.log('⚙️ General settings clicked');
+        openGeneralSettingsModal();
+      };
+      console.log('✅ Settings button handler attached');
+    } else {
+      console.error('❌ Settings button not found!');
+    }
+  }, 100);
 
 // Initialize task states
 safeStorageGet(['taskStates'], (data) => {
