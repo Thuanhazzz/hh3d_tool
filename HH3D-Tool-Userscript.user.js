@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.3
+// @version      1.0.4
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -6707,35 +6707,49 @@ class TaskScheduler {
 // Initialize scheduler
 const scheduler = new TaskScheduler();
 
-// Start button
-document.getElementById('hh3d-start-btn').onclick = async () => {
-    console.log('▶️ Start clicked');
-    await scheduler.start();
-};
-
-// Stop button
-document.getElementById('hh3d-stop-btn').onclick = async () => {
-    console.log('⏹️ Stop clicked');
-    await scheduler.stop();
-};
-
-// General settings button
-document.getElementById('hh3d-general-settings-btn').onclick = () => {
-    console.log('⚙️ General settings clicked');
-    openGeneralSettingsModal();
-};
-
-// Auto update every second
-setInterval(updateUIPanel, 1000);
-
-// Initialize on load
-(async () => {
-    await scheduler.init();
-    if (scheduler.isRunning) {
-        scheduler.start();
+// Wait for DOM to be ready before attaching event handlers
+window.addEventListener('load', () => {
+    console.log('🔧 Attaching event handlers...');
+    
+    // Start button
+    const startBtn = document.getElementById('hh3d-start-btn');
+    if (startBtn) {
+        startBtn.onclick = async () => {
+            console.log('▶️ Start clicked');
+            await scheduler.start();
+        };
     }
-    updateUIPanel();
-    console.log('✅ HH3D Tool Userscript Ready!');
-})();
+
+    // Stop button
+    const stopBtn = document.getElementById('hh3d-stop-btn');
+    if (stopBtn) {
+        stopBtn.onclick = async () => {
+            console.log('⏹️ Stop clicked');
+            await scheduler.stop();
+        };
+    }
+
+    // General settings button
+    const settingsBtn = document.getElementById('hh3d-general-settings-btn');
+    if (settingsBtn) {
+        settingsBtn.onclick = () => {
+            console.log('⚙️ General settings clicked');
+            openGeneralSettingsModal();
+        };
+    }
+
+    // Auto update every second
+    setInterval(updateUIPanel, 1000);
+
+    // Initialize scheduler
+    (async () => {
+        await scheduler.init();
+        if (scheduler.isRunning) {
+            scheduler.start();
+        }
+        updateUIPanel();
+        console.log('✅ HH3D Tool Userscript Ready!');
+    })();
+});
 
 })();
