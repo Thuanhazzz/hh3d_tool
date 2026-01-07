@@ -1,19 +1,14 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
-// @namespace    https://github.com/thuanhazzz/hh3d-tool
-// @version      1.0.0
+// @namespace    https://github.com/thuanhzzz/hh3d_tool
+// @version      1.0.1
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
 // @match        *://hoathinh3d.li/*
 // @match        *://hoathinh3d.*/*
 // @icon         https://hoathinh3d.gg/favicon.ico
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @grant        GM_deleteValue
-// @grant        GM_listValues
-// @grant        GM_xmlhttpRequest
-// @grant        GM_notification
+// @grant        none
 // @run-at       document-end
 // @updateURL    https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/HH3D-Tool-Userscript.user.js
 // @downloadURL  https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/HH3D-Tool-Userscript.user.js
@@ -127,6 +122,107 @@
         const isLogged = !html.includes('id="custom-open-login-modal"');
         
         return { profileId, userName, isLogged };
+    }
+
+    // Helper: handle 403 Forbidden response
+    function handle403Response(res, taskKey) {
+        try {
+            // First check for maintenance pages
+            const maintenance = handleMaintenanceResponse(res, taskKey);
+            if (maintenance) return maintenance;
+            const title = res && (res.title || res.titleText || '') ? String(res.title || res.titleText || '') : '';
+            if (res && (res.status === 403 || (title && /\b403\b/.test(title)))) {
+                if (title && /just a moment|chờ một chút|xác minh bảo mật/i.test(title)) {
+                    // Cloudflare-like challenge: log và trả về warning để task dừng sớm và thử lại sau
+                    console.log(taskKey, `⚠️ Phát hiện lớp xác minh bảo mật (challenge): ${title}`);
+                    return formatResult(taskKey, { status: "warning", nextTime: 60000, message: '⚠️ Xác minh bảo mật (challenge) — tạm hoãn', title });
+                } else {
+                    return formatResult(taskKey, { status: "warning", nextTime: 60000, message: "❌ Bị chặn IP (403 Forbidden)", httpStatus: 403, title });
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+        return null;
+    }
+
+    // Helper: detect maintenance page (title contains 'Bảo trì')
+    function handleMaintenanceResponse(res, taskKey) {
+        try {
+            const title = res && (res.title || res.titleText || '') ? String(res.title || res.titleText || '') : '';
+            if (title && /bảo\s*trì/i.test(title)) {
+                console.log(taskKey, `⚠️ Phát hiện trang bảo trì: ${title}`);
+                // Return a warning result and suggest retry after 30 minutes (per site message)
+                return formatResult(taskKey, { status: "warning", nextTime: 30 * 60000, message: '⚠️ Hệ thống đang bảo trì — tạm dừng (30 phút)', title });
+            }
+        } catch (e) {
+            // ignore
+        }
+        return null;
+    }
+
+    function convertCountdownToMs(timeStr) {
+        if (!timeStr || typeof timeStr !== "string") return 0;
+        const parts = timeStr.split(":").map(Number);
+        if (parts.some(isNaN)) return 0;
+        let ms = 0;
+        if (parts.length === 3) {
+            const [hh, mm, ss] = parts;
+            ms = ((hh * 3600) + (mm * 60) + ss) * 1000;
+        } else if (parts.length === 2) {
+            const [mm, ss] = parts;
+            ms = ((mm * 60) + ss) * 1000;
+        } else if (parts.length === 1) {
+            ms = parts[0] * 1000;
+        }
+        return ms;
+    }
+
+    function extractActionTokens(html) {
+        const map = {};
+        const regex = /action\s*:\s*['"]([^'"]+)['"][^}]*?(?:security|nonce)\s*:\s*['"]([^'"]+)['"]/gi;
+        let m;
+        while ((m = regex.exec(html)) !== null) map[m[1]] = m[2];
+        return map;
+    }
+
+    function extractWpNonce(html) {
+        const m = html.match(/"nonce"\s*:\s*"([a-f0-9]+)"/i);
+        return m ? m[1] : null;
+    }
+
+    function getNonce(html, key) {
+        const regex = new RegExp(`var\\s+${key}\\s*=\\s*['"]([^'"]+)['"]`, "i");
+        const m = html.match(regex);
+        return m ? m[1] : null;
+    }
+
+    function extractUserNguHanh(html) {
+        const userNguHanhRegex = /(?:class="user-element"[^>]*>.*?|id="user-nguhanh-image"[^>]*data-src=")[^"']*ngu-hanh-(moc|thuy|hoa|tho|kim)\.gif/i;
+        const match = html.match(userNguHanhRegex);
+        return match ? match[1] : null;
+    }
+
+    function extractRemainingAttacks(html) {
+        const remainingRegex = /<div class="remaining-attacks"[^>]*>Lượt đánh còn lại:\s*(\d+)<\/div>/i;
+        const match = html.match(remainingRegex);
+        return match ? parseInt(match[1]) : 0;
+    }
+
+    function checkAutoAcceptToggle(html) {
+        const toggleRegex = /<input[^>]*id="auto_accept_toggle"[^>]*checked[^>]*>/i;
+        const match = html.match(toggleRegex);
+        return match !== null;
+    }
+
+    // Safe storage wrapper
+    function safeStorageGet(keys, callback) {
+        Storage.get(keys, callback);
+    }
+
+    // Fetch with bypass (simplified for userscript)
+    async function fetchWithBypass(url, options = {}) {
+        return queueFetch(url, options);
     }
 
     // ============================================================================
