@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
-// @namespace    https://github.com/yourusername/hh3d-tool
+// @namespace    https://github.com/thuanhazzz/hh3d-tool
 // @version      1.0.0
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
