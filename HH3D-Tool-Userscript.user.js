@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.8
+// @version      1.0.9
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -6035,9 +6035,14 @@ function initializeUI() {
         }
         
         #hh3d-tool-toggle .progress-ring circle {
-          r: 27 !important;
+          r: 26 !important;
           cx: 30 !important;
           cy: 30 !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring-progress {
+          stroke-dasharray: 163 163 !important;
+          stroke-dashoffset: 163 !important;
         }
         
         #hh3d-tool-toggle svg.icon-play,
@@ -6049,13 +6054,15 @@ function initializeUI() {
         #hh3d-tool-panel {
           right: 0 !important;
           left: 0 !important;
-          top: 0 !important;
+          bottom: 0 !important;
+          top: auto !important;
           transform: none !important;
           width: 100% !important;
           max-width: 100% !important;
-          height: 100% !important;
-          max-height: 100% !important;
-          border-radius: 0 !important;
+          height: auto !important;
+          max-height: 85vh !important;
+          border-radius: 20px 20px 0 0 !important;
+          overflow-y: auto !important;
         }
         
         #hh3d-tool-panel h2 {
@@ -6087,19 +6094,24 @@ function initializeUI() {
         #hh3d-tool-toggle {
           bottom: 10px !important;
           right: 10px !important;
-          width: 55px !important;
-          height: 55px !important;
+          width: 50px !important;
+          height: 50px !important;
         }
         
         #hh3d-tool-toggle .progress-ring {
-          width: 55px !important;
-          height: 55px !important;
+          width: 50px !important;
+          height: 50px !important;
         }
         
         #hh3d-tool-toggle .progress-ring circle {
-          r: 24 !important;
-          cx: 27.5 !important;
-          cy: 27.5 !important;
+          r: 22 !important;
+          cx: 25 !important;
+          cy: 25 !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring-progress {
+          stroke-dasharray: 138 138 !important;
+          stroke-dashoffset: 138 !important;
         }
         
         #hh3d-tool-toggle svg.icon-play,
@@ -6194,11 +6206,14 @@ function initializeUI() {
       return;
     }
     
+    // Get current dasharray from CSS (might be changed by media queries)
+    const currentDashArray = progressCircle.getAttribute('stroke-dasharray').split(' ')[0];
+    
     if (isRunning) {
       // Start animation
       progressRing.classList.remove('running');
       progressCircle.style.animation = 'none';
-      progressCircle.setAttribute('stroke-dashoffset', '195');
+      progressCircle.setAttribute('stroke-dashoffset', currentDashArray);
       
       // Force reflow
       void progressCircle.offsetHeight;
@@ -6215,7 +6230,7 @@ function initializeUI() {
       // Stop animation
       progressRing.classList.remove('running');
       progressCircle.style.animation = 'none';
-      progressCircle.setAttribute('stroke-dashoffset', '195');
+      progressCircle.setAttribute('stroke-dashoffset', currentDashArray);
       
       iconPlay.style.display = 'block';
       iconPause.style.display = 'none';
@@ -6680,15 +6695,17 @@ function showCustomModal(title, tabsData = {}, options = {}) {
       @media only screen and (max-width: 768px) {
         .hh3d-modal-overlay {
           padding: 0 !important;
+          align-items: flex-end !important;
         }
         
         .hh3d-modal-overlay > div {
           width: 100% !important;
           max-width: 100% !important;
-          height: 100% !important;
-          max-height: 100% !important;
-          border-radius: 0 !important;
+          height: auto !important;
+          max-height: 85vh !important;
+          border-radius: 20px 20px 0 0 !important;
           margin: 0 !important;
+          overflow-y: auto !important;
         }
         
         .hh3d-modal-overlay h2 {
@@ -7370,7 +7387,8 @@ async function openSettingsModal(taskKey) {
   
   // Check if task has settings
   if (!config || !config.hasSettings) {
-    showCustomModal('⚠️ Thông báo', `<p style="text-align: center; font-size: 16px;">Task này chưa có cài đặt</p>`, { maxWidth: '400px', duration: 3000 });
+    //showCustomModal('⚠️ Thông báo', `<p style="text-align: center; font-size: 16px;">Task này chưa có cài đặt</p>`, { maxWidth: '400px', duration: 3000 });
+    showErrorNotif('❌ Task này chưa có cài đặt!');
     return;
   }
 
