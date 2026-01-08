@@ -6023,7 +6023,7 @@ function initializeUI() {
     responsiveStyle.textContent = `
       @media only screen and (max-width: 768px) {
         #hh3d-tool-toggle {
-          bottom: 15px !important;
+          bottom: 80px !important;
           right: 15px !important;
           width: 60px !important;
           height: 60px !important;
@@ -6035,14 +6035,15 @@ function initializeUI() {
         }
         
         #hh3d-tool-toggle .progress-ring circle {
-          r: 26 !important;
+          r: 24 !important;
           cx: 30 !important;
           cy: 30 !important;
+          stroke-width: 3 !important;
         }
         
         #hh3d-tool-toggle .progress-ring-progress {
-          stroke-dasharray: 163 163 !important;
-          stroke-dashoffset: 163 !important;
+          stroke-dasharray: 151 151 !important;
+          stroke-dashoffset: 151 !important;
         }
         
         #hh3d-tool-toggle svg.icon-play,
@@ -6055,13 +6056,13 @@ function initializeUI() {
           right: 0 !important;
           left: 0 !important;
           bottom: 0 !important;
-          top: auto !important;
+          top: 0 !important;
           transform: none !important;
           width: 100% !important;
           max-width: 100% !important;
-          height: auto !important;
-          max-height: 85vh !important;
-          border-radius: 20px 20px 0 0 !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0 !important;
           overflow-y: auto !important;
         }
         
@@ -6092,7 +6093,7 @@ function initializeUI() {
       
       @media only screen and (max-width: 480px) {
         #hh3d-tool-toggle {
-          bottom: 10px !important;
+          bottom: 70px !important;
           right: 10px !important;
           width: 50px !important;
           height: 50px !important;
@@ -6104,14 +6105,15 @@ function initializeUI() {
         }
         
         #hh3d-tool-toggle .progress-ring circle {
-          r: 22 !important;
+          r: 20 !important;
           cx: 25 !important;
           cy: 25 !important;
+          stroke-width: 3 !important;
         }
         
         #hh3d-tool-toggle .progress-ring-progress {
-          stroke-dasharray: 138 138 !important;
-          stroke-dashoffset: 138 !important;
+          stroke-dasharray: 126 126 !important;
+          stroke-dashoffset: 126 !important;
         }
         
         #hh3d-tool-toggle svg.icon-play,
