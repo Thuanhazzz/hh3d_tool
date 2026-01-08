@@ -6068,6 +6068,8 @@ function initializeUI() {
         #hh3d-tool-toggle .progress-ring-progress {
           stroke-dasharray: 151 151 !important;
           stroke-dashoffset: 151 !important;
+          transform: rotate(-90deg) !important;
+          transform-origin: center !important;
         }
         
         /* Override animation for mobile */
@@ -6143,6 +6145,8 @@ function initializeUI() {
         #hh3d-tool-toggle .progress-ring-progress {
           stroke-dasharray: 126 126 !important;
           stroke-dashoffset: 126 !important;
+          transform: rotate(-90deg) !important;
+          transform-origin: center !important;
         }
         
         /* Override animation for small mobile */
