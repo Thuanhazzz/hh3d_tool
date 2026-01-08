@@ -6068,8 +6068,6 @@ function initializeUI() {
         #hh3d-tool-toggle .progress-ring-progress {
           stroke-dasharray: 151 151 !important;
           stroke-dashoffset: 151 !important;
-          transform: rotate(-90deg) !important;
-          transform-origin: center !important;
         }
         
         /* Override animation for mobile */
@@ -6145,8 +6143,6 @@ function initializeUI() {
         #hh3d-tool-toggle .progress-ring-progress {
           stroke-dasharray: 126 126 !important;
           stroke-dashoffset: 126 !important;
-          transform: rotate(-90deg) !important;
-          transform-origin: center !important;
         }
         
         /* Override animation for small mobile */
@@ -6248,6 +6244,11 @@ function initializeUI() {
     
     // Get current dasharray from CSS (might be changed by media queries)
     const currentDashArray = progressCircle.getAttribute('stroke-dasharray').split(' ')[0];
+    
+    // Update transform to match current cx/cy (for mobile responsive)
+    const cx = progressCircle.getAttribute('cx');
+    const cy = progressCircle.getAttribute('cy');
+    progressCircle.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
     
     if (isRunning) {
       // Start animation
@@ -8069,7 +8070,8 @@ function openGeneralSettingsModal() {
         // Save to storage
         safeStorageSet({ settings }, () => {
           log('✅ General settings saved:', settings);
-          showCustomModal('✅ Thành công', '<p style="text-align: center; font-size: 16px;">Đã lưu cài đặt chung!</p>', { maxWidth: '400px', duration: 2000 });
+          // showCustomModal('✅ Thành công', '<p style="text-align: center; font-size: 16px;">Đã lưu cài đặt chung!</p>', { maxWidth: '400px', duration: 2000 });
+          showSuccessNotif('✅ Đã lưu cài đặt chung!');
           // Close settings modal
           setTimeout(() => {
             const settingsModal = document.querySelector('.hh3d-modal-overlay');
