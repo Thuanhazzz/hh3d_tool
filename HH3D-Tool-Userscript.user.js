@@ -5933,6 +5933,30 @@ function initializeUI() {
         }
       }
       
+      @keyframes progressFill768 {
+        0% {
+          stroke-dashoffset: 151;
+        }
+        99.9% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: 151;
+        }
+      }
+      
+      @keyframes progressFill480 {
+        0% {
+          stroke-dashoffset: 126;
+        }
+        99.9% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: 126;
+        }
+      }
+      
       @keyframes colorChange {
         0% {
           stroke: #00f5a0;
@@ -5979,7 +6003,7 @@ function initializeUI() {
     right: 20px;
     transform: translateY(-50%);
     width: 450px;
-    max-height: auto;
+    max-height: 94vh;
     background: white;
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
@@ -6039,7 +6063,17 @@ function initializeUI() {
           cx: 30 !important;
           cy: 30 !important;
           stroke-width: 3 !important;
-        }            
+        }
+        
+        #hh3d-tool-toggle .progress-ring-progress {
+          stroke-dasharray: 151 151 !important;
+          stroke-dashoffset: 151 !important;
+        }
+        
+        /* Override animation for mobile */
+        #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
+          animation: progressFill768 2.5s linear infinite, colorChange 2.5s linear infinite !important;
+        }
         
         #hh3d-tool-toggle svg.icon-play,
         #hh3d-tool-toggle svg.icon-pause {
@@ -6109,6 +6143,11 @@ function initializeUI() {
         #hh3d-tool-toggle .progress-ring-progress {
           stroke-dasharray: 126 126 !important;
           stroke-dashoffset: 126 !important;
+        }
+        
+        /* Override animation for small mobile */
+        #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
+          animation: progressFill480 2.5s linear infinite, colorChange 2.5s linear infinite !important;
         }
         
         #hh3d-tool-toggle svg.icon-play,
