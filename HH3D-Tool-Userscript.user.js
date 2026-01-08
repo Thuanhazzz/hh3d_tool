@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.6
+// @version      1.0.7
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -5092,9 +5092,6 @@ class TaskScheduler {
     }
 }
 
-// Initialize scheduler (MUST be before UI creation)
-const scheduler = new TaskScheduler();
-
 // ==================== FLOATING UI PANEL ====================
 const UI_TASK_NAMES = {
   checkin: '📅 Điểm Danh',
@@ -6735,17 +6732,35 @@ function updateUIPanel() {
   });
 }
 
-// Auto update UI every second
-setInterval(updateUIPanel, 1000);
+// Initialize everything when DOM is ready
+let scheduler;
 
-// Initialize scheduler
-(async () => {
-    await scheduler.init();
-    if (scheduler.isRunning) {
-        scheduler.start();
-    }
-    updateUIPanel();
-    console.log('✅ HH3D Tool Userscript Ready!');
-})();
+function initializeHH3DTool() {
+    console.log('🚀 Initializing HH3D Tool...');
+    
+    // Create scheduler instance
+    scheduler = new TaskScheduler();
+    
+    // Initialize scheduler
+    (async () => {
+        await scheduler.init();
+        if (scheduler.isRunning) {
+            scheduler.start();
+        }
+        updateUIPanel();
+        console.log('✅ HH3D Tool Userscript Ready!');
+    })();
+    
+    // Auto update UI every second
+    setInterval(updateUIPanel, 1000);
+}
+
+// Wait for DOM to be ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeHH3DTool);
+} else {
+    // DOM already loaded
+    initializeHH3DTool();
+}
 
 })();
