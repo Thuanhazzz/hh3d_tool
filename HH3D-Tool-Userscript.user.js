@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.9
+// @version      1.1.0
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -5834,31 +5834,10 @@ function initializeUI() {
   try {
     toggleBtn.innerHTML = `
       <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-        <svg class="progress-ring" width="70" height="70">
-          <circle class="progress-ring-circle" 
-            stroke="rgba(255, 255, 255, 0.2)" 
-            stroke-width="4" 
-            fill="transparent" 
-            r="31" 
-            cx="35" 
-            cy="35"/>
-          <circle class="progress-ring-progress" 
-            stroke="rgba(56, 239, 125, 1)" 
-            stroke-width="4" 
-            fill="transparent" 
-            r="31" 
-            cx="35" 
-            cy="35"
-            stroke-dasharray="195 195"
-            stroke-dashoffset="195"
-            transform="rotate(-90 35 35)"/>
-        </svg>
+        <img class="loading-gif" src="https://i.imgur.com/llF5iyg.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none;" alt="Loading">
         <div class="toggle-icon">
-          <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-          <svg class="icon-pause" width="24" height="24" viewBox="0 0 24 24" fill="white" style="display: none;">
-            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+          <svg class="icon-stop" width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <rect x="6" y="6" width="12" height="12"/>
           </svg>
         </div>
       </div>
@@ -5903,76 +5882,11 @@ function initializeUI() {
         position: relative;
       }
       
-      #hh3d-tool-toggle .progress-ring {
+      #hh3d-tool-toggle .loading-gif {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
         width: 70px;
         height: 70px;
         pointer-events: none;
-      }
-      
-      #hh3d-tool-toggle .progress-ring-progress {
-        transition: none;
-      }
-      
-      #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
-        animation: progressFill 2.5s linear infinite, colorChange 2.5s linear infinite;
-      }
-      
-      @keyframes progressFill {
-        0% {
-          stroke-dashoffset: 195;
-        }
-        99.9% {
-          stroke-dashoffset: 0;
-        }
-        100% {
-          stroke-dashoffset: 195;
-        }
-      }
-      
-      @keyframes progressFill768 {
-        0% {
-          stroke-dashoffset: 151;
-        }
-        99.9% {
-          stroke-dashoffset: 0;
-        }
-        100% {
-          stroke-dashoffset: 151;
-        }
-      }
-      
-      @keyframes progressFill480 {
-        0% {
-          stroke-dashoffset: 126;
-        }
-        99.9% {
-          stroke-dashoffset: 0;
-        }
-        100% {
-          stroke-dashoffset: 126;
-        }
-      }
-      
-      @keyframes colorChange {
-        0% {
-          stroke: #00f5a0;
-        }
-        25% {
-          stroke: #00d9ff;
-        }
-        50% {
-          stroke: #667eea;
-        }
-        75% {
-          stroke: #f093fb;
-        }
-        100% {
-          stroke: #00f5a0;
-        }
       }
       
       #hh3d-tool-toggle .toggle-icon {
@@ -5985,8 +5899,7 @@ function initializeUI() {
         height: 100%;
       }
       
-      #hh3d-tool-toggle svg.icon-play,
-      #hh3d-tool-toggle svg.icon-pause {
+      #hh3d-tool-toggle svg.icon-stop {
         position: absolute;
         transition: opacity 0.3s;
       }
@@ -6053,34 +5966,12 @@ function initializeUI() {
           height: 60px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring {
+        #hh3d-tool-toggle .loading-gif {
           width: 60px !important;
           height: 60px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring-circle {
-          r: 24 !important;
-          cx: 30 !important;
-          cy: 30 !important;
-          stroke-width: 3 !important;
-        }
-        
-        #hh3d-tool-toggle .progress-ring-progress {
-          r: 24 !important;
-          cx: 30 !important;
-          cy: 30 !important;
-          stroke-width: 3 !important;
-          stroke-dasharray: 151 151 !important;
-          stroke-dashoffset: 151 !important;
-        }
-        
-        /* Override animation for mobile */
-        #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
-          animation: progressFill768 2.5s linear infinite, colorChange 2.5s linear infinite !important;
-        }
-        
-        #hh3d-tool-toggle svg.icon-play,
-        #hh3d-tool-toggle svg.icon-pause {
+        #hh3d-tool-toggle svg.icon-stop {
           width: 20px !important;
           height: 20px !important;
         }
@@ -6132,34 +6023,12 @@ function initializeUI() {
           height: 50px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring {
+        #hh3d-tool-toggle .loading-gif {
           width: 50px !important;
           height: 50px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring-circle {
-          r: 20 !important;
-          cx: 25 !important;
-          cy: 25 !important;
-          stroke-width: 3 !important;
-        }
-        
-        #hh3d-tool-toggle .progress-ring-progress {
-          r: 20 !important;
-          cx: 25 !important;
-          cy: 25 !important;
-          stroke-width: 3 !important;
-          stroke-dasharray: 126 126 !important;
-          stroke-dashoffset: 126 !important;
-        }
-        
-        /* Override animation for small mobile */
-        #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
-          animation: progressFill480 2.5s linear infinite, colorChange 2.5s linear infinite !important;
-        }
-        
-        #hh3d-tool-toggle svg.icon-play,
-        #hh3d-tool-toggle svg.icon-pause {
+        #hh3d-tool-toggle svg.icon-stop {
           width: 18px !important;
           height: 18px !important;
         }
@@ -6240,49 +6109,21 @@ function initializeUI() {
   function updateToggleButtonState() {
     const isRunning = scheduler ? scheduler.isRunning : false;
     
-    const toggleButton = document.querySelector('#hh3d-tool-toggle');
-    const progressRing = document.querySelector('#hh3d-tool-toggle .progress-ring');
-    const progressCircle = document.querySelector('#hh3d-tool-toggle .progress-ring-progress');
-    const iconPlay = document.querySelector('#hh3d-tool-toggle .icon-play');
-    const iconPause = document.querySelector('#hh3d-tool-toggle .icon-pause');
+    const loadingGif = document.querySelector('#hh3d-tool-toggle .loading-gif');
+    const iconStop = document.querySelector('#hh3d-tool-toggle .icon-stop');
     
-    if (!progressRing || !progressCircle || !iconPlay || !iconPause) {
+    if (!loadingGif || !iconStop) {
       return;
     }
     
-    // Get current dasharray from CSS (might be changed by media queries)
-    const currentDashArray = progressCircle.getAttribute('stroke-dasharray').split(' ')[0];
-    
-    // Update transform to match current cx/cy (for mobile responsive)
-    const cx = progressCircle.getAttribute('cx');
-    const cy = progressCircle.getAttribute('cy');
-    progressCircle.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
-    
     if (isRunning) {
-      // Start animation
-      progressRing.classList.remove('running');
-      progressCircle.style.animation = 'none';
-      progressCircle.setAttribute('stroke-dashoffset', currentDashArray);
-      
-      // Force reflow
-      void progressCircle.offsetHeight;
-      
-      // Start animation
-      requestAnimationFrame(() => {
-        progressCircle.style.animation = '';
-        progressRing.classList.add('running');
-      });
-      
-      iconPlay.style.display = 'none';
-      iconPause.style.display = 'block';
+      // Show loading gif, hide stop icon
+      loadingGif.style.display = 'block';
+      iconStop.style.display = 'none';
     } else {
-      // Stop animation
-      progressRing.classList.remove('running');
-      progressCircle.style.animation = 'none';
-      progressCircle.setAttribute('stroke-dashoffset', currentDashArray);
-      
-      iconPlay.style.display = 'block';
-      iconPause.style.display = 'none';
+      // Hide loading gif, show stop icon
+      loadingGif.style.display = 'none';
+      iconStop.style.display = 'block';
     }
   }
   
@@ -6290,31 +6131,6 @@ function initializeUI() {
   setTimeout(() => {
     updateToggleButtonState();
   }, 100);
-  
-  // Expose test function to window for debugging
-  window.testProgressAnimation = function() {
-    log('[HH3D] ===== MANUAL TEST START =====');
-    const progressRing = document.querySelector('#hh3d-tool-toggle .progress-ring');
-    const progressCircle = document.querySelector('#hh3d-tool-toggle .progress-ring-progress');
-    
-    if (!progressRing || !progressCircle) {
-      error('[HH3D] Elements not found!');
-      return;
-    }
-    
-    log('[HH3D] Manually starting animation...');
-    progressRing.classList.remove('running');
-    progressCircle.style.animation = 'none';
-    progressCircle.setAttribute('stroke-dashoffset', '195');
-    
-    requestAnimationFrame(() => {
-      progressCircle.style.animation = '';
-      progressRing.classList.add('running');
-      log('[HH3D] Animation should be running now!');
-      log('[HH3D] Classes:', progressRing.classList.toString());
-      log('[HH3D] Computed animation:', window.getComputedStyle(progressCircle).animation);
-    });
-  };
   
   document.getElementById('hh3d-close-btn').onclick = () => {
     panelVisible = false;
