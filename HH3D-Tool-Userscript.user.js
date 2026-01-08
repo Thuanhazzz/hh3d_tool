@@ -6029,7 +6029,7 @@ function initializeUI() {
       <button id="hh3d-general-settings-btn" style="flex: 1; padding: 12px; border: none; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'" title="Cài đặt chung">⚙️</button>
     </div>
     
-    <div id="hh3d-tasks-container" style="flex: 1; overflow-y: auto; padding: 15px; max-height: auto;"></div>
+    <div id="hh3d-tasks-container" style="flex: 1; overflow-y: auto; padding: 15px; max-height: 94vh;"></div>
   `;
 
   // Append to body
