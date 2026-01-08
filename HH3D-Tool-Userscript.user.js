@@ -2,7 +2,7 @@
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
 // @version      1.1.0
-// @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
+// @description  Công cụ tự động hóa hoathinh3d sử dụng Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
 // @match        *://hoathinh3d.li/*
@@ -5834,7 +5834,7 @@ function initializeUI() {
   try {
     toggleBtn.innerHTML = `
       <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none;" alt="Loading">
+        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none; border-radius: 50%; object-fit: cover;" alt="Loading">
         <div class="toggle-icon">
           <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
             <path d="M8 5v14l11-7z"/>
@@ -5887,6 +5887,8 @@ function initializeUI() {
         width: 70px;
         height: 70px;
         pointer-events: none;
+        border-radius: 50%;
+        object-fit: cover;
       }
       
       #hh3d-tool-toggle .toggle-icon {
