@@ -6058,7 +6058,7 @@ function initializeUI() {
           height: 60px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring circle {
+        #hh3d-tool-toggle .progress-ring-circle {
           r: 24 !important;
           cx: 30 !important;
           cy: 30 !important;
@@ -6066,6 +6066,10 @@ function initializeUI() {
         }
         
         #hh3d-tool-toggle .progress-ring-progress {
+          r: 24 !important;
+          cx: 30 !important;
+          cy: 30 !important;
+          stroke-width: 3 !important;
           stroke-dasharray: 151 151 !important;
           stroke-dashoffset: 151 !important;
         }
@@ -6133,7 +6137,7 @@ function initializeUI() {
           height: 50px !important;
         }
         
-        #hh3d-tool-toggle .progress-ring circle {
+        #hh3d-tool-toggle .progress-ring-circle {
           r: 20 !important;
           cx: 25 !important;
           cy: 25 !important;
@@ -6141,6 +6145,10 @@ function initializeUI() {
         }
         
         #hh3d-tool-toggle .progress-ring-progress {
+          r: 20 !important;
+          cx: 25 !important;
+          cy: 25 !important;
+          stroke-width: 3 !important;
           stroke-dasharray: 126 126 !important;
           stroke-dashoffset: 126 !important;
         }
