@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HH3D Tool Mobile - Userscript
 // @namespace    https://github.com/thuanhzzz/hh3d_tool
-// @version      1.0.7
+// @version      1.0.8
 // @description  Công cụ tự động hóa hoathinh3d cho Tampermonkey
 // @author       Thuanha (Krizk)
 // @match        *://hoathinh3d.gg/*
@@ -18,19 +18,132 @@
     'use strict';
 
     // ============================================================================
+    // CUSTOM LOGGER (vì console bị chặn)
+    // ============================================================================
+    const Logger = {
+        logs: [],
+        maxLogs: 2000,
+        
+        _addLog(type, ...args) {
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    try { return JSON.stringify(arg, null, 2); }
+                    catch { return String(arg); }
+                }
+                return String(arg);
+            }).join(' ');
+            
+            this.logs.push({ type, timestamp, message });
+            if (this.logs.length > this.maxLogs) {
+                this.logs.shift();
+            }
+            
+            // Update UI if log panel exists
+            this._updateLogPanel();
+            
+            // Also log to real console (for dev)
+            try {
+                console[type](...args);
+            } catch {}
+        },
+        
+        log(...args) { this._addLog('log', ...args); },
+        info(...args) { this._addLog('info', ...args); },
+        warn(...args) { this._addLog('warn', ...args); },
+        error(...args) { this._addLog('error', ...args); },
+        
+        _updateLogPanel() {
+            const container = document.getElementById('hh3d-log-container');
+            if (!container) return;
+            
+            const html = this.logs.slice(-100).map(log => {
+                const color = {
+                    log: '#333',
+                    info: '#0066cc',
+                    warn: '#ff9800',
+                    error: '#f44336'
+                }[log.type] || '#333';
+                
+                return `<div style="padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 12px; font-family: monospace;">
+                    <span style="color: #999;">[${log.timestamp}]</span>
+                    <span style="color: ${color}; font-weight: 500;">[${log.type.toUpperCase()}]</span>
+                    <span style="color: #333; white-space: pre-wrap; word-break: break-all;">${this._escapeHtml(log.message)}</span>
+                </div>`;
+            }).join('');
+            
+            container.innerHTML = html || '<div style="padding: 20px; text-align: center; color: #999;">Chưa có log nào</div>';
+            
+            // Auto-scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        },
+        
+        _escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+        
+        clear() {
+            this.logs = [];
+            this._updateLogPanel();
+        },
+        
+        export() {
+            const text = this.logs.map(log => 
+                `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`
+            ).join('\n');
+            
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hh3d-logs-${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    };
+    
+    // Alias cho dễ dùng
+    const log = (...args) => Logger.log(...args);
+    const logError = (...args) => Logger.error(...args);
+    const logWarn = (...args) => Logger.warn(...args);
+    const logInfo = (...args) => Logger.info(...args);
+
+    // ============================================================================
     // STORAGE WRAPPER (localStorage thay vì chrome.storage)
     // ============================================================================
     const Storage = {
         get: (keys, callback) => {
             const result = {};
-            if (Array.isArray(keys)) {
+            
+            // Handle null/undefined keys - return all localStorage data
+            if (keys === null || keys === undefined) {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    const value = localStorage.getItem(key);
+                    try {
+                        result[key] = value ? JSON.parse(value) : undefined;
+                    } catch (e) {
+                        result[key] = value; // If not JSON, store as-is
+                    }
+                }
+            } else if (Array.isArray(keys)) {
                 keys.forEach(key => {
                     const value = localStorage.getItem(key);
-                    result[key] = value ? JSON.parse(value) : undefined;
+                    try {
+                        result[key] = value ? JSON.parse(value) : undefined;
+                    } catch (e) {
+                        result[key] = value;
+                    }
                 });
             } else {
                 const value = localStorage.getItem(keys);
-                result[keys] = value ? JSON.parse(value) : undefined;
+                try {
+                    result[keys] = value ? JSON.parse(value) : undefined;
+                } catch (e) {
+                    result[keys] = value;
+                }
             }
             if (callback) callback(result);
             return Promise.resolve(result);
@@ -246,13 +359,7 @@ function isExtensionContextValid() {
 // ⭐ SAFE STORAGE GET (using localStorage wrapper)
 function safeStorageGet(keys, callback) {
   try {
-    const result = {};
-    const keyArray = Array.isArray(keys) ? keys : [keys];
-    keyArray.forEach(key => {
-      const value = Storage.get(key);
-      if (value !== null) result[key] = value;
-    });
-    callback(result);
+    Storage.get(keys, callback);
   } catch (e) {
     console.error('Storage access error:', e);
     callback({});
@@ -262,10 +369,7 @@ function safeStorageGet(keys, callback) {
 // ⭐ SAFE STORAGE SET (using localStorage wrapper)
 function safeStorageSet(data, callback) {
   try {
-    Object.keys(data).forEach(key => {
-      Storage.set(key, data[key]);
-    });
-    if (callback) callback();
+    Storage.set(data, callback);
   } catch (e) {
     console.error('Storage access error:', e);
     if (callback) callback();
@@ -563,26 +667,82 @@ function normalizeText(text) {
 // ⭐ FETCH QUEUE
 let fetchQueue = [];
 let isFetching = false;
+let tasksInQueue = new Set(); // Track task names in queue to prevent duplicates
+let currentRunningTask = null; // Track current task being executed
 
-async function queueFetch(url, options = {}) {
+async function queueFetch(url, options = {}, taskName = null) {
   return new Promise((resolve, reject) => {
-    fetchQueue.push({ url, options, resolve, reject });
+    // Use currentRunningTask if taskName not provided
+    const effectiveTaskName = taskName || currentRunningTask;
+    
+    // If taskName provided, check for duplicate
+    if (effectiveTaskName && tasksInQueue.has(effectiveTaskName)) {
+      console.log(`⚠️ Task ${effectiveTaskName} already in queue, skipping duplicate`);
+      resolve(new Response(JSON.stringify({ success: false, message: 'Duplicate task in queue' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+      return;
+    }
+    
+    if (effectiveTaskName) {
+      tasksInQueue.add(effectiveTaskName);
+    }
+    
+    fetchQueue.push({ url, options, resolve, reject, taskName: effectiveTaskName });
     processQueue();
   });
+}
+
+function clearFetchQueue() {
+  console.log(`🗑️ Clearing fetch queue (${fetchQueue.length} requests)`);
+  // Reject all pending requests
+  fetchQueue.forEach(item => {
+    if (item.taskName) {
+      tasksInQueue.delete(item.taskName);
+    }
+    item.reject(new Error('Queue cleared - scheduler stopped'));
+  });
+  fetchQueue = [];
+  console.log('✅ Fetch queue cleared');
 }
 
 async function processQueue() {
   if (isFetching || fetchQueue.length === 0) return;
   isFetching = true;
-  const { url, options, resolve, reject } = fetchQueue.shift();
+  const { url, options, resolve, reject, taskName } = fetchQueue.shift();
+  
+  // Remove from tracking set when starting to process
+  if (taskName) {
+    tasksInQueue.delete(taskName);
+  }
+  
   try {
-    const response = await fetch(url, options);
+    const fullHeaders = {
+      ...options.headers,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'Cache-Control': 'max-age=0',
+      'Pragma': 'no-cache',
+      'Sec-Ch-Ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'sec-ch-ua-platform-version': '"19.0.0"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'x-requested-with': 'XMLHttpRequest',
+    };
+    const response = await fetch(url, { ...options, headers: fullHeaders ,credentials: 'include'});
     resolve(response);
   } catch (error) {
     reject(error);
   } finally {
     isFetching = false;
-    setTimeout(processQueue, 1000);
+    setTimeout(processQueue, 100);
   }
 }
 
@@ -1342,9 +1502,13 @@ const TASKS = {
       }
       
       const wpNonce = extractWpRestNonce(html);
+      log('🔑 WP Rest Nonce:', wpNonce);
       if (!wpNonce) {
         return formatResult("checkin", { status:"warning", nextTime:10000, message:"❌ Không tìm thấy restNonce" });
       }
+      
+      const requestBody = JSON.stringify({ action: "daily_check_in" });
+      // log('📤 Checkin request:', { url: apiUrl, nonce: wpNonce, body: requestBody });
       
       const res2 = await queueFetch(apiUrl, {
         method: "POST",
@@ -1354,10 +1518,21 @@ const TASKS = {
           "x-wp-nonce": wpNonce,
           "referer": pageUrl,
         },
-        body: JSON.stringify({ action: "daily_check_in" })
+        body: requestBody
       });
       
+      // log('📥 Checkin response status:', res2.status);
+      if (res2.status >= 400) {
+        const errorText = await res2.text();
+        logError('❌ Bad Response:', res2.status, errorText);
+        return formatResult("checkin", { 
+          status:"error", 
+          nextTime:60000, 
+          message:`❌ Lỗi ${res2.status}: ${errorText.substring(0, 100)}` 
+        });
+      }
       const data = await res2.json().catch(()=>null);
+      log('📥 Checkin response data:', data);
       const ok = data?.success || data?.message?.includes("đã điểm danh");
       
       return formatResult("checkin", {
@@ -1844,23 +2019,23 @@ const TASKS = {
     const pageUrl = BASE_URL + "/khoang-mach?t="+ Date.now();
     const apiUrl  = BASE_URL + "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
     try {
-      // lấy thông số cài đặt trong params
+      // lấy thông số cài đặt trong params (đã được load bởi loadTaskConfig)
       let {
-        khoangmach_mode = "fullDay",
-        khoangmach_mineType = "thuong",
-        khoangmach_mineId = 0,
+        mode = "fullDay",
+        mineType = "thuong",
+        mineId = 0,
         pickupMode = "full",
         pickupInterval = 2,
-        khoangmach_reward = "any",
+        reward = "any",
         khoangmachSchedule = []
       } = params || {};
       
       // Parse các số từ string sang integer
       const parsedPickupInterval = parseInt(pickupInterval) || 2;
-      console.log("khoangmach", `📋 Cài đặt ban đầu: mode=${khoangmach_mode}, mineType=${khoangmach_mineType}, mineId=${khoangmach_mineId}, reward=${khoangmach_reward}, pickup=${pickupMode}`);
+      console.log("khoangmach", `📋 Cài đặt ban đầu: mode=${mode}, mineType=${mineType}, mineId=${mineId}, reward=${reward}, pickup=${pickupMode}`);
 
       // ⭐ Kiểm tra chế độ lịch trình - tìm lịch gần nhất trước thời điểm hiện tại
-      if (khoangmach_mode === "scheduled" && khoangmachSchedule.length > 0) {
+      if (mode === "scheduled" && khoangmachSchedule.length > 0) {
         const now = new Date();
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
@@ -1894,9 +2069,9 @@ const TASKS = {
         }
 
         if (activeSchedule) {
-          khoangmach_mineType = activeSchedule.mineType;
-          khoangmach_mineId = parseInt(activeSchedule.mineId) || 0;
-          console.log("khoangmach", `🕒 Áp dụng lịch ${activeSchedule.time}: Mỏ ${khoangmach_mineType} - ID ${khoangmach_mineId}`);
+          mineType = activeSchedule.mineType;
+          mineId = parseInt(activeSchedule.mineId) || 0;
+          console.log("khoangmach", `🕒 Áp dụng lịch ${activeSchedule.time}: Mỏ ${mineType} - ID ${mineId}`);
         } else {
           console.log("khoangmach", `⏰ Không có lịch trình nào được cài đặt`);
           return formatResult("khoangmach", {
@@ -1908,13 +2083,13 @@ const TASKS = {
         }
       }
 
-      // load html để lấy security - dùng callWindowFetch
+      // load html để lấy security
       const res = await fetchWithBypass(pageUrl, {
         headers: {
           "accept": "text/html"
         },
-        acceptHtml: true //
-      });
+        acceptHtml: true
+      }, 'khoangmach');
       // console.log('Response Status:', res.status);
       // console.log('Title :', res.title);
       const html = await res.text();
@@ -2020,11 +2195,11 @@ const TASKS = {
 
       // load danh sách mỏ
       const mineTypeMap = { thuong: "gold", trung: "silver", ha: "copper" };
-      const mineType = mineTypeMap[khoangmach_mineType] || "gold";
+      const mineTypeApi = mineTypeMap[mineType] || "gold";
       const res2 = await queueFetch(apiUrl, {
         method: "POST",
         headers: postHeaders,
-        body: `action=load_mines_by_type&mine_type=${mineType}&security=${encodeURIComponent(security_load)}`,
+        body: `action=load_mines_by_type&mine_type=${mineTypeApi}&security=${encodeURIComponent(security_load)}`,
       });
       const mineJson = await res2.json().catch(() => null);
       if (!mineJson?.success) {
@@ -2047,7 +2222,7 @@ const TASKS = {
               });
             }
           }
-          if(inMine.id === khoangmach_mineId) {
+          if(inMine.id === mineId) {
             await wait(200);
             const resLoad = await queueFetch(apiUrl, {
               method: "POST",
@@ -2118,7 +2293,7 @@ const TASKS = {
                 }
                 
                 if(shouldProceed) {
-                  if (khoangmach_reward === "manual") {
+                  if (reward === "manual") {
                     console.log("khoangmach", ` ⚠️ Chế độ thủ công — không nhận thưởng.`);
                     return formatResult("khoangmach", { 
                       status: "warning", 
@@ -2129,7 +2304,7 @@ const TASKS = {
                     });
                   }
 
-                  if(khoangmach_reward === "110" && bonus_percentage >= 50 && bonus_percentage < 110) {
+                  if(reward === "110" && bonus_percentage >= 50 && bonus_percentage < 110) {
                     // ⭐ KIỂM TRA LOCK MỎ TRƯỚC KHI ĐOẠT
                     const lockStatus = isMineLocked(inMine.id);
                     if (lockStatus && lockStatus.locked) {
@@ -2213,11 +2388,11 @@ const TASKS = {
                     }             
                   }
                   const shouldClaim =
-                    (khoangmach_reward === "any") ||
-                    (khoangmach_reward === "110" && bonus_percentage >= 110) ||
-                    (khoangmach_reward === "100" && bonus_percentage >= 100) ||
-                    (khoangmach_reward === "50" && bonus_percentage >= 50) ||
-                    (khoangmach_reward === "20" && bonus_percentage >= 20);
+                    (reward === "any") ||
+                    (reward === "110" && bonus_percentage >= 110) ||
+                    (reward === "100" && bonus_percentage >= 100) ||
+                    (reward === "50" && bonus_percentage >= 50) ||
+                    (reward === "20" && bonus_percentage >= 20);
                   if (shouldClaim) {
                     console.log("khoangmach", ` 🎉 Đang nhận thưởng ${bonus_percentage}%...`);
                     const resClaim = await queueFetch(apiUrl, {
@@ -2263,11 +2438,11 @@ const TASKS = {
         } else {
           // chưa vào mỏ, hoặc vào mỏ khác
           let selectedMine = null;
-          if(khoangmach_mineId && khoangmach_mineId > 0) {
-            selectedMine = mines.find(m => m.id === khoangmach_mineId);
+          if(mineId && mineId > 0) {
+            selectedMine = mines.find(m => m.id === mineId);
             if(!selectedMine) {
-              console.log("khoangmach", `❌ Không tìm thấy mỏ khoáng ID=${khoangmach_mineId}`);
-              return formatResult("khoangmach", { status: "warning", percent: 0, nextTime: 30000, message: `❌ Không tìm thấy mỏ khoáng ID: ${khoangmach_mineId}`, data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role, defeatCount } });
+              console.log("khoangmach", `❌ Không tìm thấy mỏ khoáng ID=${mineId}`);
+              return formatResult("khoangmach", { status: "warning", percent: 0, nextTime: 30000, message: `❌ Không tìm thấy mỏ khoáng ID: ${mineId}`, data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role, defeatCount } });
             }          
             
             // vào mỏ đã chọn
@@ -2303,7 +2478,7 @@ const TASKS = {
               return formatResult("khoangmach", { status: "warning", percent, nextTime: parseInt(pickupInterval) * 60 * 1000 , message: `❌ Vào mỏ khoáng thất bại: ${enterJson?.data?.message || enterJson?.data || "Thất bại"}` });
             }
           } else {
-            console.log("khoangmach", `❌ Chưa cài đặt mỏ khoáng trong tham số (khoangmach_mineId=${khoangmach_mineId})`);
+            console.log("khoangmach", `❌ Chưa cài đặt mỏ khoáng trong tham số (mineId=${mineId})`);
             return formatResult("khoangmach", { status: "error", percent: 0, nextTime: 10000, message: `❌ Chưa cài đặt khoáng mạch` });
           }
         }
@@ -2454,101 +2629,531 @@ const TASKS = {
   },
 
   // ⭐ LUẬN VÕ (Implemented với settings)
-  async luanvo() {
-    const pageUrl = BASE_URL + "/luan-vo?t=" + Date.now();
-    const apiUrl = BASE_URL + "/wp-json/luan-vo/v1/send-challenge";
-    const apiAcceptUrl = BASE_URL + "/wp-json/luan-vo/v1/auto-accept";
+  async luanvo(params) {
+    // Use params directly from loadTaskConfig
+    const mode = params?.mode || "byId";
+    const opponentId = params?.opponentId || "";
+    const opponentType = params?.opponentType || "any";
+    const hireBot = params?.hireBot !== false;
+    const challengeFast = params?.challengeFast !== false;
+    const secretMode = params?.secretMode || false;
+    const rewardMode = params?.rewardMode || false;
+    const changeNguHanh = params?.changeNguHanh || false;
+    const completedDate = params?.completed_date || "";
+    const runningState = params?.running_state || { isRunning: false, currentCount: 0, maxReload: 100, intervalMinutes: 2 };
     
-    // Load settings from storage
-    const settings = await new Promise(resolve => {
-      safeStorageGet(['luanvo_mode', 'luanvo_targetId', 'luanvo_hireBot'], resolve);
-    });
+    if(mode === "byId" && (!opponentId || opponentId.trim() === "")) {
+      return formatResult("luanvo", { status:"error", nextTime:0, message:"❌ Chưa nhập ID đối thủ!" });
+    }
     
-    const mode = settings.luanvo_mode || 'auto';
-    const targetId = settings.luanvo_targetId || '';
-    const hireBot = settings.luanvo_hireBot || false;
-    
-    try {
-      const res = await queueFetch(pageUrl, {headers: {"accept": "text/html"}});
-      const html = await res.text();
-      const _403 = handle403Response(res);
-      if (_403) return _403;
+    return new Promise(async (resolve) => {
+      try {
+       
+        const pageUrl = BASE_URL + "/luan-vo-duong?t=abfda";
+        const apiJoinBattleUrl = BASE_URL + "/wp-json/luan-vo/v1/join-battle";
+        const apiAutoAcceptUrl = BASE_URL + "/wp-json/luan-vo/v1/toggle-auto-accept";
+        const apiSendChallengeUrl = BASE_URL + "/wp-json/luan-vo/v1/send-challenge";
+        const apiRewardUrl = BASE_URL + "/wp-json/luan-vo/v1/receive-reward";
+        const apiOnlineUsersUrl = BASE_URL + "/wp-json/luan-vo/v1/online-users";  
+        const apiSearchUsersUrl = BASE_URL + "/wp-json/luan-vo/v1/search-users";  
+        const apiGetReceivedsUrl = BASE_URL + "/wp-json/luan-vo/v1/get-received-challenges";
+        const apiAcceptChallengeAutoUrl = BASE_URL + "/wp-json/luan-vo/v1/auto-approve-challenge";
+        const apiAcceptChallengeUrl = BASE_URL + "/wp-json/luan-vo/v1/approve-challenge";
       
-      const { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role, isLogged } = extractProfileInfo(html);
-      if (!isLogged) return formatResult("luanvo", { status:"error", nextTime:10000, message:"❌ Chưa đăng nhập" });
-      
-      const wpNonce = extractWpRestNonce(html);
-      if (!wpNonce) return formatResult("luanvo", { status:"warning", nextTime:10000, message:"❌ Không tìm thấy nonce" });
-      
-      // Extract challenge counts
-      const sentMatch = html.match(/so-luot-gui[^>]*>.*?(\d+)\s*\/\s*(\d+)/i);
-      const receivedMatch = html.match(/so-luot-nhan[^>]*>.*?(\d+)\s*\/\s*(\d+)/i);
-      
-      const sentCount = sentMatch ? parseInt(sentMatch[1], 10) : 0;
-      const sentTotal = sentMatch ? parseInt(sentMatch[2], 10) : 5;
-      const receivedCount = receivedMatch ? parseInt(receivedMatch[1], 10) : 0;
-      const receivedTotal = receivedMatch ? parseInt(receivedMatch[2], 10) : 5;
-      
-      if (sentCount >= sentTotal && receivedCount >= receivedTotal) {
-        return formatResult("luanvo", { status:"done", percent:100, nextTime:0, message:"🎉 Đã đạt tối đa gửi và nhận" });
-      }
-      
-      const postHeaders = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "x-requested-with": "XMLHttpRequest",
-        "x-wp-nonce": wpNonce,
-        "referer": pageUrl,
-      };
-      
-      let messages = [];
-      
-      // Send challenge
-      if (sentCount < sentTotal) {
-        let targetUserId = targetId;
-        if (mode === 'auto' || !targetUserId) {
-          // Random target (simplified - should fetch online users)
-          targetUserId = '1'; // Placeholder
+        // load html để lấy security
+        const res = await queueFetch(pageUrl, {
+          headers: {
+            "accept": "text/html",
+          }
+        }, 'luanvo');
+        const html = await res.text();
+        const _403 = handle403Response(res, "luanvo");
+        if (_403) {
+          resolve(_403);
+          return;
+        }
+        const { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role, isLogged } = extractProfileInfo(html);
+        
+        // Kiểm tra trạng thái đăng nhập
+        if (!isLogged) {
+          resolve(formatResult("luanvo", { status:"error", nextTime:10000, message:"❌ Chưa đăng nhập" }));
+          return;
         }
         
-        const resChallenge = await queueFetch(apiUrl, {
-          method: "POST",
-          headers: postHeaders,
-          body: JSON.stringify({ target_user_id: targetUserId })
-        });
+        const restNonce = getNonce(html, "customRestNonce");
+        const securityToken = extractSecurityToken(html);
+        if(!restNonce || !securityToken) {
+          resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:"❌ Lấy token thất bại" }));
+          return;
+        }
+        const postHeaders = {
+          "accept": "application/json, text/javascript, */*;q=0.01",
+          "content-type": "application/json",
+          "x-requested-with": "XMLHttpRequest",
+          "x-wp-nonce": restNonce,
+          "referer": pageUrl,
+        };
         
-        const challengeJson = await resChallenge.json().catch(()=>null);
-        if (challengeJson?.success) {
-          const challengeId = challengeJson?.data?.challenge_id;
-          messages.push(`✅ Gửi khiêu chiến thành công`);
+        // ⭐ KIỂM TRA XEM HÔM NAY ĐÃ HOÀN THÀNH LUẬN VÕ CHƯA
+        // Lấy ngày theo giờ Việt Nam (UTC+7)
+        const vietnamDate = new Date(Date.now() + 7 * 60 * 60 * 1000);
+        const today = vietnamDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        const isCompletedToday = completedDate === today;
+        
+        Logger.log(`📅 Ngày hôm nay: ${today}`);
+        Logger.log(`📅 Ngày hoàn thành: ${completedDate}`);
+        Logger.log(`📅 Đã hoàn thành hôm nay: ${isCompletedToday}`);
+        
+        // ⭐ NẾU ĐÃ HOÀN THÀNH HÔM NAY → KIỂM TRA SECRET MODE
+        if(isCompletedToday && secretMode){
+          Logger.log("✅ Đã hoàn thành luận võ hôm nay - Kiểm tra chế độ bí mật...");
+          // ⭐ ĐỌC TRẠNG THÁI CHẠY TỪ STORAGE
+          const { isRunning, currentCount, maxReload, intervalMinutes } = runningState;
           
-          // Auto accept
-          await wait(2000);
-          const resAccept = await queueFetch(apiAcceptUrl, {
+          // ⭐ NẾU KHÔNG CHẠY AUTO → RETURN DONE NGAY
+          if (!isRunning) {
+            Logger.log(`⏸️ Chế độ bí mật: Chưa sẵn sàng chạy`);
+            resolve(formatResult("luanvo", { 
+              status:"done", 
+              nextTime: 0,
+              percent: 0,
+              message:`⏸️ (Chế độ bí mật - Chưa sẵn sàng)`,
+              data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+            }));
+            return;
+          }
+          
+          // ⭐ ĐỌC CÀI ĐẶT NHẬN THƯỞNG VÀ ĐỔI NGŨ HÀNH
+          let rewardMessage = "";
+          let nguHanhMessage = "";
+          
+          // ⭐ NẾU BẬT NHẬN THƯỞNG - THỰC HIỆN NHẬN THƯỞNG
+          if (rewardMode) {
+            Logger.log("🎁 Bắt đầu nhận thưởng...");
+            
+            const resReward = await queueFetch(apiRewardUrl, {
+              method: "POST",
+              headers: postHeaders,
+              body: JSON.stringify({})
+            }, 'luanvo');
+            const rewardJson = await resReward.json().catch(()=>null);
+            
+            if(rewardJson?.message?.includes("đã nhận thưởng") || rewardJson?.message?.includes("Chúc mừng đạo hữu nhận được")) {
+              rewardMessage = `✅ Nhận thưởng: ${rewardJson?.message || "Thành công"}`;
+              Logger.log(rewardMessage);
+            } else {
+              rewardMessage = `⚠️ Chưa có thưởng để nhận: ${rewardJson?.message || rewardJson?.data || "Thất bại"}`;
+              Logger.log(rewardMessage);
+            }
+            
+            await wait(300);
+          }
+          
+          // ⭐ NẾU BẬT ĐỔI NGŨ HÀNH - THỰC HIỆN ĐỔI
+          if (changeNguHanh) {
+            Logger.log("🔥 Bắt đầu đổi ngũ hành...");
+            
+            const hoangVucUrl = BASE_URL + "/hoang-vuc?t=" + Date.now();
+            const apiChangeUrl = BASE_URL + "/wp-content/themes/halimmovies-child/hh3d-ajax.php";
+            
+            const resHoangVuc = await queueFetch(hoangVucUrl, {
+              headers: { "accept": "text/html" }
+            }, 'luanvo');
+            const htmlHoangVuc = await resHoangVuc.text();
+            const bossNonce = getNonce(htmlHoangVuc, "ajax_boss_nonce");
+            
+            if (!bossNonce) {
+              nguHanhMessage = "\n❌ Không đổi được ngũ hành";
+              Logger.log("❌ Không tìm thấy nonce để đổi ngũ hành");
+            } else {
+              const changeHeaders = {
+                "accept": "application/json, text/javascript, */*;q=0.01",
+                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "x-requested-with": "XMLHttpRequest",
+                "referer": hoangVucUrl,
+              };
+              
+              let lastElement = "Unknown";
+              let successCount = 0;
+              
+              for (let i = 1; i <= 4; i++) {
+                const resChange = await queueFetch(apiChangeUrl, {
+                  method: "POST",
+                  headers: changeHeaders,
+                  body: `action=change_user_element&nonce=${bossNonce}`
+                }, 'luanvo');
+                
+                const changeJson = await resChange.json().catch(() => null);
+                
+                if (changeJson?.success) {
+                  lastElement = changeJson?.data?.new_element || "Unknown";
+                  successCount++;
+                  Logger.log(`✅ Lần ${i}/4: ${lastElement}`);
+                } else {
+                  Logger.log(`❌ Lần ${i}/4 thất bại: ${changeJson?.message || "Lỗi"}`);
+                }
+                
+                await wait(200);
+              }
+              
+              if (successCount > 0) {
+                nguHanhMessage = `\n🔥 Đổi ngũ hành: ${successCount}/4 lần → ${lastElement}`;
+                Logger.log(`🔥 Đã đổi ngũ hành ${successCount}/4 lần. Ngũ hành cuối: ${lastElement}`);
+              } else {
+                nguHanhMessage = "\n❌ Đổi ngũ hành thất bại";
+              }
+            }
+            
+            await wait(300);
+          }
+          
+          // ⭐ XỬ LÝ AUTO-RELOAD
+          if(isRunning && currentCount < maxReload){
+            const newCount = currentCount + 1;
+            await Storage.set({
+              luanvo_running_state: {
+                isRunning: true,
+                currentCount: newCount,
+                maxReload,
+                intervalMinutes
+              }
+            });
+            
+            Logger.log(`✅ Chế độ bí mật: ${newCount}/${maxReload} - Sẽ chạy lại sau ${intervalMinutes} phút`);
+            
+            resolve(formatResult("luanvo", { 
+              status:"success", 
+              nextTime: intervalMinutes * 60000,
+              percent: Math.floor((newCount / maxReload) * 100),
+              message:`✅ (Chế độ bí mật ${newCount}/${maxReload})\n` + rewardMessage + nguHanhMessage,
+              data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+            }));
+            return;
+          } else if(isRunning && currentCount >= maxReload) {
+            await Storage.set({
+              luanvo_running_state: {
+                isRunning: false,
+                currentCount: maxReload,
+                maxReload,
+                intervalMinutes
+              }
+            });
+            
+            Logger.log(`🎉 Chế độ bí mật hoàn thành ${maxReload}/${maxReload} lượt!`);
+            
+            resolve(formatResult("luanvo", { 
+              status:"done", 
+              nextTime: 0,
+              percent: 100,
+              message:`🎉 Chế độ bí mật hoàn thành ${maxReload}/${maxReload}\n` + rewardMessage + nguHanhMessage,
+              data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+            }));
+            return;
+          }
+        }
+        
+        // ⭐ LOGIC THÔNG THƯỜNG (CHƯA HOÀN THÀNH HOẶC KHÔNG PHẢI SECRET MODE)
+        Logger.log("🔄 Chạy logic thông thường...");
+        
+        // Tham gia luận võ (nếu chưa tham gia)
+        if(!secretMode) {
+          const resJoin = await queueFetch(apiJoinBattleUrl, {
             method: "POST",
             headers: postHeaders,
-            body: JSON.stringify({ challenge_id: challengeId })
+            body: JSON.stringify({ security_token: securityToken })
+          }, 'luanvo');
+          const joinJson = await resJoin.json().catch(()=>null);
+          if(!joinJson?.success) {
+            if(!joinJson?.message?.includes("đã tham gia")) {     
+              resolve(formatResult("luanvo", { status:"warning", nextTime:10000, message:"❌ Tham gia luận võ thất bại: " + (joinJson?.message || "Thất bại") }));
+              return;
+            }
+          }
+          Logger.log(`✅ Tham gia luận võ thành công: ${joinJson?.message || ""}`);
+        }
+        
+        // ⭐ NHẬN THƯỞNG TRƯỚC
+        const resReward = await queueFetch(apiRewardUrl, {
+          method: "POST",
+          headers: postHeaders,
+          body: JSON.stringify({})
+        }, 'luanvo');
+        const rewardJson = await resReward.json().catch(()=>null);
+        if(rewardJson?.message?.includes("đã nhận thưởng") || rewardJson?.message?.includes("Chúc mừng đạo hữu nhận được")) {
+          // ⭐ LƯU TRẠNG THÁI ĐÃ HOÀN THÀNH HÔM NAY
+          await Storage.set({ luanvo_completed_date: today });
+          Logger.log(`✅ Đã lưu trạng thái hoàn thành cho ngày ${today}`);
+          
+          resolve(formatResult("luanvo", { 
+            status:"done", 
+            nextTime: 0,
+            percent: 100,
+            message:`✅: ` + (rewardJson?.message || "Thành công") ,
+            data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+          }));
+          return;
+        } else{
+          Logger.log(`⚠️ Chưa có thưởng để nhận: ${rewardJson?.message || rewardJson?.data || "Thất bại"}`);
+        }
+        
+        await wait(200);
+        
+        // kiểm tra toggle tự động nhận lời thách đấu
+        const res2 = await queueFetch(pageUrl, {
+          headers: {
+            "accept": "text/html",
+          }
+        }, 'luanvo');
+        const html2 = await res2.text();
+        const isAutoAcceptOn = checkAutoAcceptToggle(html2);
+        Logger.log(`⚡ Trạng thái tự động chấp nhận: ${isAutoAcceptOn ? "Đang bật" : "Đang tắt"}`);
+        
+        // ⭐ LOGIC CHỈ CHO CHALLENGEFAST
+        if (challengeFast && mode === "byId") {
+          Logger.log(`🚀 Chế độ Khiêu Chiến Nhanh được bật`);
+          
+          // Hủy các khiêu chiến đã gửi trước đó
+          Logger.log(`⚡ Hủy các khiêu chiến đã gửi trước đó...`);
+          try {
+            const apiGetSentUrl = BASE_URL + "/wp-json/luan-vo/v1/get-sent-challenges";
+            const apiCancelUrl = BASE_URL + "/wp-json/luan-vo/v1/cancel-challenge";       
+    
+            // Lấy danh sách yêu cầu đã gửi
+            Logger.log("🔍 Đang lấy danh sách yêu cầu khiêu chiến đã gửi...");
+            const resGetSent = await queueFetch(apiGetSentUrl, {
+              method: "POST",
+              headers: postHeaders,
+              body: "{}"
+            }, 'luanvo');
+    
+            const sentJson = await resGetSent.json().catch(() => null);
+            if (!sentJson?.success) {
+              Logger.log("❌ Không thể lấy danh sách yêu cầu");
+            } else {
+              const htmlContent = sentJson.data?.html || "";
+              const $ = cheerio.load(htmlContent);
+              const challenges = [];
+              $('.reject-request').each((index, element) => {
+                const $btn = $(element);
+                const userId = $btn.attr('data-user-id');
+                const challengeId = $btn.attr('data-challenge-id');
+                if (userId && challengeId) challenges.push({ userId, challengeId });
+              });
+    
+              if (challenges.length === 0) {
+                Logger.log("✅ Không có yêu cầu khiêu chiến nào cần hủy");
+              } else {
+                Logger.log(`📋 Tìm thấy ${challenges.length} yêu cầu khiêu chiến`);
+                let successCount = 0, failCount = 0;
+                for (const challenge of challenges) {
+                  try {
+                    const cancelRes = await queueFetch(apiCancelUrl, {
+                      method: "POST",
+                      headers: postHeaders,
+                      body: JSON.stringify({ target_user_id: challenge.userId, challenge_id: challenge.challengeId })
+                    }, 'luanvo');
+                    const cancelJson = await cancelRes.json().catch(() => null);
+                    if (cancelJson?.success) {
+                      successCount++;
+                      Logger.log(`✅ Đã hủy yêu cầu gửi đến user ${challenge.userId}`);
+                    } else {
+                      failCount++;
+                      Logger.log(`❌ Lỗi hủy yêu cầu đến user ${challenge.userId}: ${cancelJson?.message}`);
+                    }
+                  } catch (err) {
+                    failCount++;
+                    Logger.log(`❌ Lỗi hủy yêu cầu đến user ${challenge.userId}: ${err.message}`);
+                  }
+                  await new Promise(r => setTimeout(r, 500));
+                }
+                const totalMessage = `✅ Đã hủy ${successCount}/${challenges.length} yêu cầu khiêu chiến${failCount > 0 ? ` (${failCount} thất bại)` : ''}`;
+                Logger.log(totalMessage);
+              }        
+            }
+          } catch (err) {
+            Logger.log(`❌ Lỗi hủy yêu cầu khiêu chiến đi: ${err.message}`);
+          }
+    
+          // ⭐ CHẠY HANDLEFASTMODE - Gửi challenge liên tục
+          Logger.log(`🚀 Gửi khiêu chiến cho ID: ${opponentId}`);
+          let sendCount = 0;
+          const maxSend = 5;
+          
+          for(let i = 0; i < maxSend; i++) {
+            const resChallenge = await queueFetch(apiSendChallengeUrl, {
+              method: "POST",
+              headers: postHeaders,
+              body: JSON.stringify({ target_user_id: opponentId })
+            }, 'luanvo');
+            const challengeJson = await resChallenge.json().catch(()=>null);
+            if(challengeJson?.success) {
+              sendCount++;
+              Logger.log(`✅ Gửi khiêu chiến lần ${i+1}/${maxSend} thành công`);
+            } else {
+              Logger.log(`❌ Gửi khiêu chiến lần ${i+1}/${maxSend} thất bại: ${challengeJson?.message || "Lỗi"}`);
+              if(challengeJson?.data?.includes("tối đa")) break;
+            }
+            await wait(500);
+          }
+          
+          resolve(formatResult("luanvo", {
+            status:"success",
+            nextTime:60000,
+            message:`🚀 Đã gửi ${sendCount}/${maxSend} khiêu chiến nhanh`,
+            data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+          }));
+          return;
+        }
+        
+        // ⭐ LOGIC CHO MODE AUTO HOẶC BYID KHÔNG CÓ CHALLENGEFAST
+        if((!isAutoAcceptOn && mode === "auto") || (isAutoAcceptOn && mode === "byId" && !challengeFast)) {
+            // Thay đổi trạng thái toggle 
+            Logger.log(`⚡ Đang thay đổi trạng thái tự động chấp nhận...`);
+            const resAuto = await queueFetch(apiAutoAcceptUrl, {
+              method: "POST",
+              headers: postHeaders,
+              body: JSON.stringify({})
+            }, 'luanvo');
+            const autoJson = await resAuto.json().catch(()=>null);
+            if(!autoJson?.success) {
+                resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:"❌ Lỗi: " + (autoJson?.message || autoJson?.error || "Thất bại") }));
+                return;
+            }
+            Logger.log(`✅ Trạng thái: ${autoJson?.message || ""}`);
+        }
+        await wait(200);    
+        
+        if(mode === "auto") {
+          // ⭐ MODE AUTO - Tìm đối thủ online
+          Logger.log("🔍 Tìm đối thủ online...");
+          const resOnline = await queueFetch(apiOnlineUsersUrl, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify({})
+          }, 'luanvo');
+          const onlineJson = await resOnline.json().catch(()=>null);
+          if(!onlineJson?.success || !onlineJson?.data?.users?.length) {
+            resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:"❌ Không tìm thấy đối thủ online" }));
+            return;
+          }
+          
+          // Lọc theo opponentType
+          let candidates = onlineJson.data.users;
+          if(opponentType !== "any") {
+            candidates = candidates.filter(u => {
+              if(opponentType === "weaker") return parseInt(u.tong_mon) < tongmon;
+              if(opponentType === "stronger") return parseInt(u.tong_mon) > tongmon;
+              return true;
+            });
+          }
+          
+          if(!candidates.length) {
+            resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:"❌ Không tìm thấy đối thủ phù hợp" }));
+            return;
+          }
+          
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          
+          // Gửi challenge
+          const resChallenge = await queueFetch(apiSendChallengeUrl, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify({ target_user_id: target.id })
+          }, 'luanvo');
+          const challengeJson = await resChallenge.json().catch(()=>null);
+          
+          if(challengeJson?.success) {
+            Logger.log(`✅ Gửi khiêu chiến cho ${target.name} (ID: ${target.id})`);
+            resolve(formatResult("luanvo", {
+              status:"success",
+              nextTime:60000,
+              message:`✅ Gửi khiêu chiến thành công cho ${target.name}`,
+              data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
+            }));
+            return;
+          } else {
+            resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:`❌ ${challengeJson?.message || "Thất bại"}` }));
+            return;
+          }
+        } else if(mode === "byId" && !challengeFast) {
+          // ⭐ MODE BYID THÔNG THƯỜNG (KHÔNG CÓ CHALLENGEFAST)
+          let infoSent = "";
+          let infoReceived = "";
+          
+          // gửi yêu cầu khiêu chiến cho opponentId 
+          const resChallenge = await queueFetch(apiSendChallengeUrl, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify({ target_user_id: opponentId })
+          }, 'luanvo');
+          const challengeJson = await resChallenge.json().catch(()=>null);
+          if(!challengeJson?.success) {
+            if(challengeJson?.data?.includes("tối đa")) {
+              infoSent = `⚠️ Đã gửi khiêu chiến tối đa: ${challengeJson?.data || "Tối đa"}`;
+            }
+          } else {
+            infoSent = `✅ Gửi khiêu chiến thành công: ${challengeJson?.data?.message || challengeJson?.data || ""}`;
+          }
+          await wait(200);
+          
+          // kiểm tra các lời khiêu chiến đã nhận
+          const resReceived = await queueFetch(apiGetReceivedsUrl, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify({})
+          }, 'luanvo');
+          const receivedJson = await resReceived.json().catch(()=>null);
+          if(!receivedJson?.success) {
+            resolve(formatResult("luanvo", { status:"warning", nextTime:10000, message:"❌ Lấy lời khiêu chiến thất bại: " + (receivedJson?.data?.message || receivedJson?.data || "Thất bại") }));
+            return;
+          }
+          const htmlReceived = receivedJson?.data.html || "";
+          // Regex để lấy data-user-id và data-challenge-id
+          const matches = [...htmlReceived.matchAll(/data-user-id="(\d+)"\s+data-challenge-id="(\d+)"/g)];
+    
+          const result = matches.map(m => ({
+            userId: m[1],
+            challengeId: m[2]
+          }));
+          const resultMap = {};
+          result.forEach(item => {
+            resultMap[item.userId] = { challengeId: item.challengeId };
           });
           
-          const acceptJson = await resAccept.json().catch(()=>null);
-          if (acceptJson?.success) {
-            messages.push(`✅ Tự động chấp nhận thành công`);
+          // chấp nhận lời khiêu chiến từ opponentID
+          const challenge_id = resultMap[opponentId]?.challengeId;
+          Logger.log(`⚡ Lời khiêu chiến từ ID = ${opponentId} (challengeId: ${challenge_id})`);
+          if(!challenge_id) {
+            infoReceived = `❌ Không tìm thấy lời khiêu chiến từ ID: ${opponentId}`;
+            resolve(formatResult("luanvo", { status:"warning", nextTime:30000, percent: 0, message:`❌ Không tìm thấy lời khiêu chiến từ ID: ${opponentId}` }));
+            return;
           }
-        } else {
-          messages.push(`❌ ${challengeJson?.message || 'Gửi khiêu chiến thất bại'}`);
+          const resAccept = await queueFetch(apiAcceptChallengeUrl, {
+            method: "POST",
+            headers: postHeaders,
+            body: JSON.stringify({ target_user_id: opponentId, challenge_id: challenge_id })
+          }, 'luanvo');
+          const acceptJson = await resAccept.json().catch(()=>null);
+          if(!acceptJson?.success) {
+            infoReceived = `❌ Chấp nhận khiêu chiến thất bại: ${acceptJson?.message || "Thất bại"}`;
+            resolve(formatResult("luanvo", { status:"warning", nextTime:30000, message:"❌ Chấp nhận khiêu chiến thất bại: " + (acceptJson?.message || "Thất bại") }));
+            return;
+          } else{
+            infoReceived = `✅ Chấp nhận khiêu chiến thành công: ${acceptJson?.data?.message || ""}`;
+          }
+          const message = [infoSent, infoReceived].filter(s => s).join("\n");
+          resolve(formatResult("luanvo", { status:"success", nextTime:60000, message: message, data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role } }));
+          return;
         }
+      } catch (err) {
+        if(err.message.includes("Unauthorized")) {
+          resolve(formatResult("luanvo", { status:"error", nextTime:10000, message:"❌ Chưa đăng nhập!" }));
+          return;
+        }
+        resolve(formatResult("luanvo", { status:"warning", nextTime:60000, message:`❌ ${err.message}` }));
+        return;
       }
-      
-      return formatResult("luanvo", {
-        status:"success",
-        percent: Math.floor(((sentCount + receivedCount) / (sentTotal + receivedTotal)) * 100),
-        nextTime: 5*60*1000,
-        message: messages.join('\n') || `📊 Gửi: ${sentCount}/${sentTotal}, Nhận: ${receivedCount}/${receivedTotal}`,
-        data: { profileId, userName, avatarUrl, tuVi, tinhThach, tienNgoc, tongmon, role }
-      });
-    } catch (err) {
-      return formatResult("luanvo", { status:"error", nextTime:120000, message:`❌ ${err.message}` });
-    }
+    });
   },
 
   // ⭐ FETCH MINE DATA - Lấy danh sách mỏ thượng, trung, hạ
@@ -2643,8 +3248,9 @@ const TASKS = {
 
   // ⭐ TIÊN DUYÊN 
   async tienduyen() {
-    const switch_lixi = Storage.get('switch_lixi') !== null ? Storage.get('switch_lixi') : true;
-    const time_check = Storage.get('time_check') || 3;
+    const data = await Storage.get(['switch_lixi', 'time_check']);
+    const switch_lixi = data.switch_lixi !== undefined ? data.switch_lixi : true;
+    const time_check = data.time_check || 3;
     const pageUrl = BASE_URL + "/tien-duyen?t="+Date.now();
     const apiUrl  = BASE_URL + "/wp-json/hh3d/v1/action";
 
@@ -3713,12 +4319,12 @@ async duatop(params) {
   }
 
   try {
-    const resPage = await queueFetch(pageUrl, { 
+    const resPage = await fetchWithBypass(pageUrl, { 
       method: "GET",
       headers: {  
         "accept": "text/html",
       },
-      useWindowFetch: true // sử dụng window.fetch để tránh lỗi CORS
+      acceptHtml: true // Đánh dấu để bypass nếu cần
     });
     const html = await resPage.text();
     const _403 = handle403Response(resPage, "duatop");
@@ -4885,8 +5491,55 @@ function updateTaskStatus(taskName, result) {
       timestamp: Date.now(),
       nextTime: result.nextTime ? Date.now() + result.nextTime : null
     };
-    safeStorageSet({ taskResults: results });
+    safeStorageSet({ taskResults: results }, () => {
+      // Update UI for this specific task
+      updateSingleTaskUI(taskName, results[taskName]);
+    });
   });
+}
+
+// Update UI for a single task card
+function updateSingleTaskUI(taskKey, taskResult) {
+  const taskItem = document.querySelector(`.hh3d-task-item[data-task="${taskKey}"]`);
+  if (!taskItem) {
+    log(`⚠️ Task card not found for: ${taskKey}`);
+    return;
+  }
+  
+  const statusClass = getUIStatusClass(taskResult.status);
+  const statusText = taskResult.status === 'ready' ? '⚪ Sẵn sàng' : getUIStatusText(taskResult.status);
+  const percent = taskResult.percent || 0;
+  const message = taskResult.message || 'Sẵn sàng - Chờ bắt đầu';
+  
+  // Update status badge
+  const statusBadge = taskItem.querySelector('[class*="status-"]');
+  if (statusBadge) {
+    statusBadge.className = statusClass;
+    statusBadge.textContent = statusText;
+  }
+  
+  // Update message
+  const messageEl = taskItem.querySelector('div[style*="font-size: 12px"]');
+  if (messageEl) messageEl.textContent = message;
+  
+  // Update progress bar
+  const progressBar = taskItem.querySelector('div[style*="linear-gradient(90deg"]');
+  if (progressBar) progressBar.style.width = `${percent}%`;
+  
+  // Update percent text  
+  const percentText = taskItem.querySelector('span[style*="font-weight: 600"]');
+  if (percentText) percentText.textContent = `${Math.round(percent)}%`;
+  
+  // Update next time
+  let nextTimeText = '';
+  if (taskResult.nextTime) {
+    const remaining = taskResult.nextTime - Date.now();
+    nextTimeText = remaining > 0 ? `⏱ ${formatUITime(remaining)}` : '⏱ Ngay bây giờ';
+  }
+  const nextTimeEl = taskItem.querySelectorAll('span[style*="color: #666"]')[1];
+  if (nextTimeEl) nextTimeEl.textContent = nextTimeText;
+  
+  // log(`🔄 Updated UI for task: ${taskKey}`, { status: taskResult.status, percent, message });
 }
 
 // Setup auto-rerun for a task
@@ -4984,12 +5637,21 @@ class TaskScheduler {
     }
 
     async init() {
-        const isRunning = Storage.get('isRunning') || false;
-        const taskResults = Storage.get('taskResults') || {};
-        const taskStates = Storage.get('taskStates') || {};
+        // Clear all pending timeouts from previous session
+        rerunTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        rerunTimeouts.clear();
+        console.log('🗑️ Cleared all pending timeouts');
         
-        this.isRunning = isRunning;
-        this.taskResults = taskResults;
+        // Always start fresh - don't restore previous running state
+        const data = await Storage.get(['taskResults', 'taskStates']);
+        const taskResults = data.taskResults || {};
+        const taskStates = data.taskStates || {};
+        
+        this.isRunning = false;
+        this.taskResults = {}; // Reset to empty
+        
+        // Clear running state and task results from storage
+        await Storage.set({ isRunning: false, taskResults: {} });
         
         if (taskStates) {
             Object.keys(taskStates).forEach(key => {
@@ -4999,7 +5661,7 @@ class TaskScheduler {
             });
         }
         
-        console.log('📊 Scheduler initialized:', {
+        log('📊 Scheduler initialized:', {
             isRunning: this.isRunning,
             runningTasks: Array.from(this.runningTasks)
         });
@@ -5007,19 +5669,42 @@ class TaskScheduler {
 
     async start() {
         if (this.isRunning) {
-            console.log('⚠️ Already running');
+            logWarn('⚠️ Already running');
             return;
         }
         
         this.isRunning = true;
-        Storage.set('isRunning', true);
-        console.log('▶️ Scheduler started');
+        await Storage.set({ isRunning: true });
+        
+        // Reset ALL tasks to ready state when starting
+        this.taskResults = {};
+        await Storage.set({ taskResults: {} });
+        
+        // Re-render UI to show all tasks as ready
+        const data = await Storage.get(['taskStates']);
+        const taskStates = data.taskStates || UI_DEFAULT_TASK_STATES;
+        renderUITasks({}, taskStates); // Empty results = all ready
+        
+        log('▶️ Scheduler started');
+        log('📋 Tasks to run:', Array.from(this.runningTasks));
         
         // Run all enabled tasks
         for (const key of this.runningTasks) {
+            if (!this.isRunning) {
+                log('🛑 Scheduler stopped, aborting task execution');
+                break;
+            }
+            log(`🎯 Starting task: ${key}`);
             await this.runTask(key);
+            log(`✔️ Finished task: ${key}, waiting 2s...`);
+            if (!this.isRunning) {
+                log('🛑 Scheduler stopped during wait');
+                break;
+            }
             await wait(2000);
         }
+        
+        log('✅ All tasks completed!');
         
         // Start interval to check for rerun
         this.checkInterval = setInterval(() => {
@@ -5029,12 +5714,12 @@ class TaskScheduler {
 
     async stop() {
         if (!this.isRunning) {
-            console.log('⚠️ Already stopped');
+            logWarn('⚠️ Already stopped');
             return;
         }
         
         this.isRunning = false;
-        Storage.set('isRunning', false);
+        await Storage.set({ isRunning: false });
         
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
@@ -5045,35 +5730,54 @@ class TaskScheduler {
         rerunTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
         rerunTimeouts.clear();
         
-        console.log('⏹️ Scheduler stopped');
+        // Clear fetch queue
+        clearFetchQueue();
+        
+        log('⏹️ Scheduler stopped');
     }
 
-    async runTask(key) {
+    async runTask(key, skipRunningCheck = false) {
         if (!TASKS[key]) {
-            console.warn(`⚠️ Task ${key} not found`);
+            logWarn(`⚠️ Task ${key} not found`);
             return;
         }
         
-        console.log(`🏃 Running task: ${key}`);
+        // Check if scheduler is still running (unless skipRunningCheck = true)
+        if (!skipRunningCheck && !this.isRunning) {
+            log(`⏹️ Scheduler stopped, skipping task: ${key}`);
+            return;
+        }
+        
+        log(`🏃 Running task: ${key}`);
+        
+        // Set current running task for queueFetch tracking
+        currentRunningTask = key;
+        
+        // Reset to ready first, then set to running
+        updateTaskStatus(key, { status: 'ready', message: 'Chuẩn bị...', percent: 0 });
+        await wait(100); // Small delay
         updateTaskStatus(key, { status: 'running', message: 'Đang chạy...', percent: 0 });
         
         try {
             const config = await loadTaskConfig(key);
             const result = await TASKS[key](config);
             updateTaskStatus(key, result);
-            console.log(`✅ Task ${key} completed:`, result.message);
+            log(`✅ Task ${key} completed:`, result.message);
             
             if (result.status !== 'done' && result.nextTime && result.nextTime > 0) {
                 setupTaskRerun(key, result.nextTime);
             }
         } catch (error) {
-            console.error(`❌ Task ${key} error:`, error);
+            logError(`❌ Task ${key} error:`, error);
             updateTaskStatus(key, {
                 status: 'error',
                 message: 'Lỗi: ' + error.message,
                 percent: 0
             });
             setupTaskRerun(key, 60000);
+        } finally {
+            // Clear current running task
+            currentRunningTask = null;
         }
     }
 
@@ -5084,7 +5788,7 @@ class TaskScheduler {
         for (const key of this.runningTasks) {
             const result = this.taskResults[key];
             if (result && result.nextTime && result.nextTime <= now) {
-                console.log(`⏰ Time to rerun ${key}`);
+                log(`⏰ Time to rerun ${key}`);
                 await this.runTask(key);
                 await wait(2000);
             }
@@ -5118,28 +5822,153 @@ const UI_DEFAULT_TASK_STATES = {
   noel: false, duatop: false, tele: true
 };
 
-  // Create toggle button
+function initializeUI() {
+  if (document.getElementById('hh3d-tool-toggle')) {
+    return;
+  }
+
+  // Create toggle button with circular progress
   const toggleBtn = document.createElement('button');
   toggleBtn.id = 'hh3d-tool-toggle';
-  toggleBtn.innerHTML = '🎮';
+  
+  try {
+    toggleBtn.innerHTML = `
+      <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+        <svg class="progress-ring" width="70" height="70">
+          <circle class="progress-ring-circle" 
+            stroke="rgba(255, 255, 255, 0.2)" 
+            stroke-width="4" 
+            fill="transparent" 
+            r="31" 
+            cx="35" 
+            cy="35"/>
+          <circle class="progress-ring-progress" 
+            stroke="rgba(56, 239, 125, 1)" 
+            stroke-width="4" 
+            fill="transparent" 
+            r="31" 
+            cx="35" 
+            cy="35"
+            stroke-dasharray="195 195"
+            stroke-dashoffset="195"
+            transform="rotate(-90 35 35)"/>
+        </svg>
+        <div class="toggle-icon">
+          <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg class="icon-pause" width="24" height="24" viewBox="0 0 24 24" fill="white" style="display: none;">
+            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+          </svg>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    // Fallback to simple emoji
+    toggleBtn.innerHTML = '🎮';
+  }
   toggleBtn.style.cssText = `
     position: fixed;
     bottom: 20px;
     right: 20px;
-    width: 60px;
-    height: 60px;
+    width: 70px;
+    height: 70px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border: none;
     color: white;
-    font-size: 28px;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     z-index: 999998;
-    transition: transform 0.2s;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    overflow: visible;
   `;
   toggleBtn.onmouseenter = () => toggleBtn.style.transform = 'scale(1.1)';
   toggleBtn.onmouseleave = () => toggleBtn.style.transform = 'scale(1)';
+  
+  // Add progress animation styles
+  if (!document.getElementById('hh3d-progress-styles')) {
+    const progressStyle = document.createElement('style');
+    progressStyle.id = 'hh3d-progress-styles';
+    progressStyle.textContent = `
+      #hh3d-tool-toggle {
+        overflow: visible;
+      }
+      
+      #hh3d-tool-toggle .toggle-btn-inner {
+        position: relative;
+      }
+      
+      #hh3d-tool-toggle .progress-ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 70px;
+        height: 70px;
+        pointer-events: none;
+      }
+      
+      #hh3d-tool-toggle .progress-ring-progress {
+        transition: none;
+      }
+      
+      #hh3d-tool-toggle .progress-ring.running .progress-ring-progress {
+        animation: progressFill 2.5s linear infinite, colorChange 2.5s linear infinite;
+      }
+      
+      @keyframes progressFill {
+        0% {
+          stroke-dashoffset: 195;
+        }
+        99.9% {
+          stroke-dashoffset: 0;
+        }
+        100% {
+          stroke-dashoffset: 195;
+        }
+      }
+      
+      @keyframes colorChange {
+        0% {
+          stroke: #00f5a0;
+        }
+        25% {
+          stroke: #00d9ff;
+        }
+        50% {
+          stroke: #667eea;
+        }
+        75% {
+          stroke: #f093fb;
+        }
+        100% {
+          stroke: #00f5a0;
+        }
+      }
+      
+      #hh3d-tool-toggle .toggle-icon {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+      }
+      
+      #hh3d-tool-toggle svg.icon-play,
+      #hh3d-tool-toggle svg.icon-pause {
+        position: absolute;
+        transition: opacity 0.3s;
+      }
+    `;
+    document.head.appendChild(progressStyle);
+  }
 
   // Create panel
   const panel = document.createElement('div');
@@ -5172,6 +6001,7 @@ const UI_DEFAULT_TASK_STATES = {
     <div style="padding: 15px; display: flex; gap: 8px;">
       <button id="hh3d-start-btn" style="flex: 2; padding: 12px; border: none; border-radius: 8px; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(17, 153, 142, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">▶️ Chạy</button>
       <button id="hh3d-stop-btn" style="flex: 2; padding: 12px; border: none; border-radius: 8px; background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%); color: white; font-weight: bold; cursor: pointer; transition: all 0.2s;" disabled onmouseover="if(!this.disabled) { this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(238, 9, 121, 0.4)' }" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">⏹️ Dừng</button>
+      <button id="hh3d-logs-btn" style="flex: 1; padding: 12px; border: none; border-radius: 8px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(240, 147, 251, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'" title="Xem logs">📋</button>
       <button id="hh3d-general-settings-btn" style="flex: 1; padding: 12px; border: none; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'" title="Cài đặt chung">⚙️</button>
     </div>
     
@@ -5179,17 +6009,249 @@ const UI_DEFAULT_TASK_STATES = {
   `;
 
   // Append to body
-  document.body.appendChild(toggleBtn);
-  document.body.appendChild(panel);
+  try {
+    document.body.appendChild(toggleBtn);
+    document.body.appendChild(panel);
+  } catch (error) {
+    logError('Error appending UI elements:', error);
+  }
+  
+  // Add responsive styles for mobile
+  if (!document.getElementById('hh3d-responsive-styles')) {
+    const responsiveStyle = document.createElement('style');
+    responsiveStyle.id = 'hh3d-responsive-styles';
+    responsiveStyle.textContent = `
+      @media only screen and (max-width: 768px) {
+        #hh3d-tool-toggle {
+          bottom: 15px !important;
+          right: 15px !important;
+          width: 60px !important;
+          height: 60px !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring {
+          width: 60px !important;
+          height: 60px !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring circle {
+          r: 27 !important;
+          cx: 30 !important;
+          cy: 30 !important;
+        }
+        
+        #hh3d-tool-toggle svg.icon-play,
+        #hh3d-tool-toggle svg.icon-pause {
+          width: 20px !important;
+          height: 20px !important;
+        }
+        
+        #hh3d-tool-panel {
+          right: 0 !important;
+          left: 0 !important;
+          top: 0 !important;
+          transform: none !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0 !important;
+        }
+        
+        #hh3d-tool-panel h2 {
+          font-size: 18px !important;
+        }
+        
+        #hh3d-tool-panel button {
+          padding: 10px 15px !important;
+          font-size: 13px !important;
+        }
+        
+        #hh3d-tool-panel input,
+        #hh3d-tool-panel select {
+          font-size: 16px !important;
+        }
+        
+        /* Task items in grid */
+        #hh3d-tool-panel > div:nth-child(2) {
+          padding: 10px !important;
+        }
+        
+        /* Task grid responsive */
+        .hh3d-task-item {
+          min-width: 100% !important;
+        }
+      }
+      
+      @media only screen and (max-width: 480px) {
+        #hh3d-tool-toggle {
+          bottom: 10px !important;
+          right: 10px !important;
+          width: 55px !important;
+          height: 55px !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring {
+          width: 55px !important;
+          height: 55px !important;
+        }
+        
+        #hh3d-tool-toggle .progress-ring circle {
+          r: 24 !important;
+          cx: 27.5 !important;
+          cy: 27.5 !important;
+        }
+        
+        #hh3d-tool-toggle svg.icon-play,
+        #hh3d-tool-toggle svg.icon-pause {
+          width: 18px !important;
+          height: 18px !important;
+        }
+        
+        #hh3d-tool-panel h2 {
+          font-size: 16px !important;
+        }
+        
+        #hh3d-tool-panel button {
+          padding: 8px 12px !important;
+          font-size: 12px !important;
+        }
+      }
+    `;
+    document.head.appendChild(responsiveStyle);
+  }
 
   // Toggle panel
   let panelVisible = false;
-  toggleBtn.onclick = () => {
-    panelVisible = !panelVisible;
-    panel.style.display = panelVisible ? 'flex' : 'none';
-    if (panelVisible) updateUIPanel();
+  let clickTimer = null;
+  
+  // Single click - toggle panel (with delay to detect double click)
+  toggleBtn.onclick = (e) => {
+    if (clickTimer) {
+      // This is second click - cancel single click action
+      clearTimeout(clickTimer);
+      clickTimer = null;
+      return;
+    }
+    
+    clickTimer = setTimeout(() => {
+      clickTimer = null;
+      panelVisible = !panelVisible;
+      panel.style.display = panelVisible ? 'flex' : 'none';
+      if (panelVisible) updateUIPanel();
+    }, 250); // 250ms delay to detect double click
   };
-
+  
+  // Double click - toggle start/stop
+  toggleBtn.ondblclick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Clear single click timer
+    if (clickTimer) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+    
+    const isRunning = scheduler ? scheduler.isRunning : false;
+    
+    try {
+      if (isRunning) {
+        log('⏹️ Double-click: Stopping scheduler...');
+        await scheduler.stop();
+        log('⏹️ Scheduler stopped');
+      } else {
+        log('▶️ Double-click: Starting scheduler...');
+        const startPromise = scheduler.start();
+        // Update UI immediately without waiting
+        setTimeout(() => {
+          updateUIPanel();
+          updateToggleButtonState();
+        }, 50);
+        await startPromise;
+        log('✅ Scheduler tasks completed');
+      }
+      updateUIPanel();
+      updateToggleButtonState();
+    } catch (err) {
+      log('❌ Error in double-click handler:', err.message);
+      updateUIPanel();
+      updateToggleButtonState();
+    }
+  };
+  
+  // Function to update toggle button state
+  function updateToggleButtonState() {
+    const isRunning = scheduler ? scheduler.isRunning : false;
+    
+    const toggleButton = document.querySelector('#hh3d-tool-toggle');
+    const progressRing = document.querySelector('#hh3d-tool-toggle .progress-ring');
+    const progressCircle = document.querySelector('#hh3d-tool-toggle .progress-ring-progress');
+    const iconPlay = document.querySelector('#hh3d-tool-toggle .icon-play');
+    const iconPause = document.querySelector('#hh3d-tool-toggle .icon-pause');
+    
+    if (!progressRing || !progressCircle || !iconPlay || !iconPause) {
+      return;
+    }
+    
+    if (isRunning) {
+      // Start animation
+      progressRing.classList.remove('running');
+      progressCircle.style.animation = 'none';
+      progressCircle.setAttribute('stroke-dashoffset', '195');
+      
+      // Force reflow
+      void progressCircle.offsetHeight;
+      
+      // Start animation
+      requestAnimationFrame(() => {
+        progressCircle.style.animation = '';
+        progressRing.classList.add('running');
+      });
+      
+      iconPlay.style.display = 'none';
+      iconPause.style.display = 'block';
+    } else {
+      // Stop animation
+      progressRing.classList.remove('running');
+      progressCircle.style.animation = 'none';
+      progressCircle.setAttribute('stroke-dashoffset', '195');
+      
+      iconPlay.style.display = 'block';
+      iconPause.style.display = 'none';
+    }
+  }
+  
+  // Initialize toggle button state (default: stopped)
+  setTimeout(() => {
+    updateToggleButtonState();
+  }, 100);
+  
+  // Expose test function to window for debugging
+  window.testProgressAnimation = function() {
+    log('[HH3D] ===== MANUAL TEST START =====');
+    const progressRing = document.querySelector('#hh3d-tool-toggle .progress-ring');
+    const progressCircle = document.querySelector('#hh3d-tool-toggle .progress-ring-progress');
+    
+    if (!progressRing || !progressCircle) {
+      error('[HH3D] Elements not found!');
+      return;
+    }
+    
+    log('[HH3D] Manually starting animation...');
+    progressRing.classList.remove('running');
+    progressCircle.style.animation = 'none';
+    progressCircle.setAttribute('stroke-dashoffset', '195');
+    
+    requestAnimationFrame(() => {
+      progressCircle.style.animation = '';
+      progressRing.classList.add('running');
+      log('[HH3D] Animation should be running now!');
+      log('[HH3D] Classes:', progressRing.classList.toString());
+      log('[HH3D] Computed animation:', window.getComputedStyle(progressCircle).animation);
+    });
+  };
+  
   document.getElementById('hh3d-close-btn').onclick = () => {
     panelVisible = false;
     panel.style.display = 'none';
@@ -5197,47 +6259,130 @@ const UI_DEFAULT_TASK_STATES = {
 
   // ⭐ ATTACH EVENT HANDLERS FOR START/STOP BUTTONS (wrap in setTimeout to ensure DOM is ready)
   setTimeout(() => {
-    console.log('🔧 Attaching Start/Stop/Settings event handlers...');
+    log('🔧 Attaching Start/Stop/Settings event handlers...');
     
     const startBtn = document.getElementById('hh3d-start-btn');
     if (startBtn) {
       startBtn.onclick = async () => {
-        console.log('▶️ Start clicked');
-        await scheduler.start();
+        log('▶️ Start clicked');
+        const startPromise = scheduler.start();
+        // Update UI immediately without waiting
+        setTimeout(() => {
+          updateUIPanel();
+          updateToggleButtonState();
+        }, 50);
+        await startPromise;
       };
-      console.log('✅ Start button handler attached');
+      log('✅ Start button handler attached');
     } else {
-      console.error('❌ Start button not found!');
+      logError('❌ Start button not found!');
     }
 
     const stopBtn = document.getElementById('hh3d-stop-btn');
     if (stopBtn) {
       stopBtn.onclick = async () => {
-        console.log('⏹️ Stop clicked');
+        log('⏹️ Stop clicked');
         await scheduler.stop();
+        setTimeout(() => {
+          updateUIPanel();
+          updateToggleButtonState();
+        }, 50);
       };
-      console.log('✅ Stop button handler attached');
+      log('✅ Stop button handler attached');
     } else {
-      console.error('❌ Stop button not found!');
+      logError('❌ Stop button not found!');
     }
 
     const settingsBtn = document.getElementById('hh3d-general-settings-btn');
     if (settingsBtn) {
       settingsBtn.onclick = () => {
-        console.log('⚙️ General settings clicked');
+        log('⚙️ General settings clicked');
         openGeneralSettingsModal();
       };
-      console.log('✅ Settings button handler attached');
+      log('✅ Settings button handler attached');
     } else {
-      console.error('❌ Settings button not found!');
+      logError('❌ Settings button not found!');
+    }
+    
+    const logsBtn = document.getElementById('hh3d-logs-btn');
+    if (logsBtn) {
+      logsBtn.onclick = () => {
+        log('📋 Logs button clicked');
+        openLogsModal();
+      };
+      log('✅ Logs button handler attached');
+    } else {
+      logError('❌ Logs button not found!');
     }
   }, 100);
+  
+  log('[HH3D] UI initialized successfully');
+}
+
+// Open Logs Modal
+function openLogsModal() {
+  const existingModal = document.querySelector('.hh3d-logs-modal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  const modal = document.createElement('div');
+  modal.className = 'hh3d-logs-modal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999999;
+  `;
+  
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 12px; width: 90%; max-width: 800px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; color: white; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 18px;">📋 Nhật Ký Hoạt Động</h3>
+        <div style="display: flex; gap: 10px;">
+          <button id="hh3d-export-logs" style="background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">💾 Export</button>
+          <button id="hh3d-clear-logs" style="background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">🗑️ Xóa</button>
+          <button id="hh3d-close-logs" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer; padding: 0; line-height: 1;">×</button>
+        </div>
+      </div>
+      <div id="hh3d-log-container" style="flex: 1; overflow-y: auto; background: #f5f5f5;"></div>
+      <div style="padding: 12px; background: #fafafa; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 12px;">
+        Tổng: <span id="hh3d-log-count">${Logger.logs.length}</span> logs
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  Logger._updateLogPanel();
+  
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  document.getElementById('hh3d-close-logs').onclick = () => modal.remove();
+  document.getElementById('hh3d-clear-logs').onclick = () => {
+    if (confirm('Xóa tất cả logs?')) {
+      Logger.clear();
+      document.getElementById('hh3d-log-count').textContent = '0';
+    }
+  };
+  document.getElementById('hh3d-export-logs').onclick = () => {
+    Logger.export();
+    log('💾 Đã export logs');
+  };
+}
 
 // Initialize task states
 safeStorageGet(['taskStates'], (data) => {
   if (!data.taskStates) {
     safeStorageSet({ taskStates: UI_DEFAULT_TASK_STATES }, () => {
-      console.log('✅ Initialized taskStates');
+      log('✅ Initialized taskStates');
     });
   }
 });
@@ -5331,9 +6476,9 @@ function renderUITasks(taskResults, taskStates) {
                 transition: all 0.2s;
                 flex-shrink: 0;
               " onmouseover="this.style.background='#764ba2'" onmouseout="this.style.background='#667eea'" title="Cài đặt">⚙️</button>
-              <label class="hh3d-toggle" style="position: relative; display: block; width: 36px; height: 20px; flex-shrink: 0;">
-                <input type="checkbox" data-task="${taskKey}" ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0; position: absolute;">
-                <span style="
+              <label class="hh3d-toggle" style="position: relative; display: block; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" class="hh3d-task-toggle" data-task="${taskKey}" ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 100%; height: 100%; position: absolute; top: 0; left: 0; cursor: pointer; margin: 0; z-index: 2;">
+                <span class="hh3d-toggle-slider" style="
                   position: absolute;
                   cursor: pointer;
                   top: 0;
@@ -5344,6 +6489,8 @@ function renderUITasks(taskResults, taskStates) {
                   transition: 0.3s;
                   border-radius: 24px;
                   display: block;
+                  pointer-events: none;
+                  z-index: 1;
                 ">
                   <span style="
                     position: absolute;
@@ -5393,36 +6540,64 @@ function renderUITasks(taskResults, taskStates) {
     }
 
     // Add toggle event listeners
-    container.querySelectorAll('.hh3d-toggle input').forEach(input => {
+    container.querySelectorAll('.hh3d-task-toggle').forEach(input => {
+      log('✅ Attaching toggle listener for:', input.dataset.task);
       input.addEventListener('change', (e) => {
         const taskKey = e.target.dataset.task;
         const isEnabled = e.target.checked;
         
-        console.log(`🔄 Toggle changed: ${taskKey} = ${isEnabled}`);
+        log(`🔄 Toggle changed: ${taskKey} = ${isEnabled}`);
         
+        // Update UI immediately
+        const label = e.target.closest('.hh3d-toggle');
+        const slider = label.querySelector('.hh3d-toggle-slider');
+        const knob = slider.querySelector('span');
+        if (slider) {
+          slider.style.backgroundColor = isEnabled ? '#11998e' : '#ccc';
+        }
+        if (knob) {
+          knob.style.transform = isEnabled ? 'translateX(16px)' : 'translateX(0)';
+        }
+        
+        // Update task state in storage
         safeStorageGet(['taskStates'], (data) => {
           const taskStates = data.taskStates || {};
           taskStates[taskKey] = isEnabled;
           
           safeStorageSet({ taskStates }, () => {
-            console.log(`✅ Task ${taskKey} ${isEnabled ? 'enabled' : 'disabled'}`);
+            log(`✅ Task ${taskKey} ${isEnabled ? 'enabled' : 'disabled'}`);
             
-            if (isEnabled) {
-              console.log(`▶️ Starting task: ${taskKey}`);
-              executeSingleTask(taskKey).catch(error => {
-                console.error('❌ Error starting task:', error);
-              });
-            } else {
-              console.log(`⏹️ Stopping task: ${taskKey}`);
-              // Clear timeout if exists
-              if (rerunTimeouts.has(taskKey)) {
-                clearTimeout(rerunTimeouts.get(taskKey));
-                rerunTimeouts.delete(taskKey);
-                console.log(`🗑️ Cleared timeout for ${taskKey}`);
+            // Add/remove from scheduler's runningTasks
+            if (scheduler) {
+              if (isEnabled) {
+                scheduler.runningTasks.add(taskKey);
+                log(`➕ Added ${taskKey} to running tasks`);
+                
+                // Start this task immediately when enabled (skip running check)
+                log(`🚀 Task ${taskKey} enabled, starting immediately...`);
+                scheduler.runTask(taskKey, true).catch(error => {
+                  logError(`❌ Error starting task ${taskKey}:`, error);
+                });
+              } else {
+                scheduler.runningTasks.delete(taskKey);
+                log(`➖ Removed ${taskKey} from running tasks`);
+                
+                // Clear timeout if exists
+                if (rerunTimeouts.has(taskKey)) {
+                  clearTimeout(rerunTimeouts.get(taskKey));
+                  rerunTimeouts.delete(taskKey);
+                  log(`🗑️ Cleared timeout for ${taskKey}`);
+                }
+                
+                // Reset task status to ready
+                updateTaskStatus(taskKey, {
+                  status: 'ready',
+                  message: 'Đã dừng - Chờ bật lại',
+                  percent: 0,
+                  nextTime: null
+                });
               }
             }
-            
-            updateUIPanel();
           });
         });
       });
@@ -5499,6 +6674,90 @@ function showCustomModal(title, tabsData = {}, options = {}) {
       @keyframes slideIn {
         from { transform: translateY(-50px); opacity: 0; }
         to { transform: translateY(0); opacity: 1; }
+      }
+      
+      /* Mobile responsive styles */
+      @media only screen and (max-width: 768px) {
+        .hh3d-modal-overlay {
+          padding: 0 !important;
+        }
+        
+        .hh3d-modal-overlay > div {
+          width: 100% !important;
+          max-width: 100% !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0 !important;
+          margin: 0 !important;
+        }
+        
+        .hh3d-modal-overlay h2 {
+          font-size: 18px !important;
+        }
+        
+        .hh3d-modal-overlay button {
+          padding: 10px 15px !important;
+          font-size: 13px !important;
+        }
+        
+        .hh3d-modal-overlay input,
+        .hh3d-modal-overlay select,
+        .hh3d-modal-overlay textarea {
+          font-size: 16px !important; /* Prevent zoom on iOS */
+        }
+        
+        .hh3d-modal-overlay label {
+          font-size: 13px !important;
+        }
+        
+        /* Tab buttons on mobile */
+        .hh3d-modal-overlay > div > div:nth-child(2) {
+          flex-wrap: wrap;
+          padding: 0 10px !important;
+        }
+        
+        .hh3d-modal-overlay > div > div:nth-child(2) button {
+          padding: 12px 15px !important;
+          font-size: 13px !important;
+          flex: 1 1 auto;
+          min-width: 80px;
+        }
+        
+        /* Modal body padding */
+        .hh3d-modal-overlay > div > div:last-child > div {
+          padding: 15px !important;
+        }
+        
+        /* Header padding */
+        .hh3d-modal-overlay > div > div:first-child {
+          padding: 15px !important;
+        }
+        
+        /* Close button */
+        .hh3d-modal-overlay > div > div:first-child button {
+          width: 35px !important;
+          height: 35px !important;
+          font-size: 28px !important;
+        }
+      }
+      
+      @media only screen and (max-width: 480px) {
+        .hh3d-modal-overlay h2 {
+          font-size: 16px !important;
+        }
+        
+        .hh3d-modal-overlay button {
+          padding: 8px 12px !important;
+          font-size: 12px !important;
+        }
+        
+        .hh3d-modal-overlay > div > div:last-child > div {
+          padding: 12px !important;
+        }
+        
+        .hh3d-modal-overlay > div > div:first-child {
+          padding: 12px !important;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -5716,10 +6975,26 @@ function showCustomModal(title, tabsData = {}, options = {}) {
 // Storage helpers
 async function loadTaskConfig(taskKey) {
   return new Promise((resolve) => {
-    const storageKey = `taskConfig_${taskKey}`;
-    safeStorageGet(['settings'], (data) => {
-      const settings = data.settings || {};
-      const taskConfig = settings[storageKey] || {};
+    // Đọc tất cả keys có prefix taskKey_
+    // Ví dụ: taskKey = "luanvo" => đọc luanvo_mode, luanvo_opponentId, etc.
+    safeStorageGet(null, (allData) => {
+      const taskConfig = {};
+      const prefix = `${taskKey}_`;
+      
+      // log(`🔍 Loading config for ${taskKey} (prefix: ${prefix})`);
+      // log('📦 All storage data:', allData);
+      
+      for (const [key, value] of Object.entries(allData)) {
+        if (key.startsWith(prefix)) {
+          // Bỏ prefix để lấy tên field gốc
+          // Ví dụ: luanvo_mode => mode
+          const fieldName = key.substring(prefix.length);
+          taskConfig[fieldName] = value;
+          // log(`  ✓ Found ${key} => ${fieldName}: ${value}`);
+        }
+      }
+      
+      // log(`✅ Loaded config for ${taskKey}:`, taskConfig);
       resolve(taskConfig);
     });
   });
@@ -5727,14 +7002,17 @@ async function loadTaskConfig(taskKey) {
 
 async function saveTaskConfig(taskKey, configData) {
   return new Promise((resolve) => {
-    safeStorageGet(['settings'], (data) => {
-      const settings = data.settings || {};
-      const storageKey = `taskConfig_${taskKey}`;
-      settings[storageKey] = configData;
-      safeStorageSet({ settings }, () => {
-        console.log(`✅ Saved config for ${taskKey}:`, configData);
-        resolve();
-      });
+    // Chuyển đổi configData thành flat keys với prefix taskKey
+    // Ví dụ: taskKey = "luanvo", configData = { mode: "auto", opponentId: "123" }
+    // => Lưu thành: { luanvo_mode: "auto", luanvo_opponentId: "123" }
+    const flatKeys = {};
+    for (const [key, value] of Object.entries(configData)) {
+      flatKeys[`${taskKey}_${key}`] = value;
+    }
+    
+    safeStorageSet(flatKeys, () => {
+      log(`✅ Saved config for ${taskKey}:`, flatKeys);
+      resolve();
     });
   });
 }
@@ -6209,11 +7487,16 @@ function setupSimpleFieldsHandlers(modal, taskKey, fields) {
 
 // LUẬN VÕ Complex UI Builder
 async function buildLuanVoSettingsUI(config) {
+  log('🔍 Building Luận Võ UI with config:', config);
+  
   const mode = config.mode || 'auto';
-  const autoOpponentType = config.autoOpponentType || 'any';
-  const targetId = config.targetId || '';
+  const opponentType = config.opponentType || 'any';
+  const opponentId = config.opponentId || '';
   const challengeFast = config.challengeFast !== undefined ? config.challengeFast : true;
   const hireBot = config.hireBot !== undefined ? config.hireBot : true;
+  const secretMode = config.secretMode || false;
+  const rewardMode = config.rewardMode || false;
+  const changeNguHanh = config.changeNguHanh || false;
   
   return `
     <div class="luanvo-settings" style="padding: 10px 0;">
@@ -6236,17 +7519,18 @@ async function buildLuanVoSettingsUI(config) {
       </div>
       <div id="auto-settings" data-visible-if='{"field":"luanvo_mode","value":"auto"}' style="margin-bottom: 20px;">
         <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #555;">🎯 Chọn đối thủ</label>
-        <select id="luanvo_auto_opponent" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
-          <option value="any" ${autoOpponentType === 'any' ? 'selected' : ''}>Đối thủ nào cũng được</option>
-          <option value="weakerOrEqual" ${autoOpponentType === 'weakerOrEqual' ? 'selected' : ''}>Thấp hơn hoặc tương đương</option>
+        <select id="luanvo_opponentType" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+          <option value="any" ${opponentType === 'any' ? 'selected' : ''}>Đối thủ nào cũng được</option>
+          <option value="weaker" ${opponentType === 'weaker' ? 'selected' : ''}>Yếu hơn</option>
+          <option value="stronger" ${opponentType === 'stronger' ? 'selected' : ''}>Mạnh hơn</option>
         </select>
       </div>
       <div id="byid-settings" data-visible-if='{"field":"luanvo_mode","value":"byId"}' style="margin-bottom: 20px;">
         <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #555;">🔢 ID đối thủ</label>
-        <input type="text" id="luanvo_target_id" value="${targetId}" placeholder="Nhập ID đối thủ" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
+        <input type="text" id="luanvo_opponentId" value="${opponentId}" placeholder="Nhập ID đối thủ" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="luanvo_challenge_fast" ${challengeFast ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+            <input type="checkbox" id="luanvo_challengeFast" ${challengeFast ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
             <div>
               <div style="font-weight: 600; font-size: 14px; color: #555;">⚡ Chế độ Khiêu Chiến Nhanh</div>
               <div style="font-size: 12px; color: #999; margin-top: 4px;">Cho phép luận võ chéo 3 acc nếu có acc lẻ</div>
@@ -6256,10 +7540,34 @@ async function buildLuanVoSettingsUI(config) {
       </div>
       <div style="margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px;">
         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-          <input type="checkbox" id="luanvo_hire_bot" ${hireBot ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+          <input type="checkbox" id="luanvo_hireBot" ${hireBot ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
           <div>
             <div style="font-weight: 600; font-size: 14px; color: #555;">🤖 Thuê bot đánh (sau 21h)</div>
             <div style="font-size: 12px; color: #999; margin-top: 4px;">Tự động thuê bot để hoàn thành luận võ sau 21h</div>
+          </div>
+        </label>
+      </div>
+      <div style="margin-bottom: 20px; background: #f0f7ff; padding: 15px; border-radius: 8px; border: 2px solid #667eea;">
+        <div style="font-weight: 700; font-size: 15px; color: #667eea; margin-bottom: 12px;">⭐ Tính năng nâng cao</div>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 10px;">
+          <input type="checkbox" id="luanvo_secretMode" ${secretMode ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: #555;">🤫 Chế độ bí mật (Auto-reload)</div>
+            <div style="font-size: 12px; color: #999; margin-top: 4px;">Tự động chạy lại sau khi hoàn thành</div>
+          </div>
+        </label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 10px;">
+          <input type="checkbox" id="luanvo_rewardMode" ${rewardMode ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: #555;">🎁 Nhận thưởng tự động</div>
+            <div style="font-size: 12px; color: #999; margin-top: 4px;">Tự động nhận thưởng luận võ</div>
+          </div>
+        </label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="luanvo_changeNguHanh" ${changeNguHanh ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: #555;">🔥 Đổi ngũ hành tự động</div>
+            <div style="font-size: 12px; color: #999; margin-top: 4px;">Tự động đổi ngũ hành 4 lần</div>
           </div>
         </label>
       </div>
@@ -6272,31 +7580,45 @@ function setupLuanVoHandlers(modal, taskKey) {
   setupConditionalVisibility(modal);
   
   const saveBtn = modal.querySelector('#save-luanvo-btn');
-  if (!saveBtn) return;
+  if (!saveBtn) {
+    error('❌ Save button not found for luanvo!');
+    return;
+  }
   
   saveBtn.onclick = async () => {
+    log('💾 Saving Luận Võ settings...');
+    
     const modeRadio = modal.querySelector('input[name="luanvo_mode"]:checked');
     const mode = modeRadio ? modeRadio.value : 'auto';
     
     const configData = {
       mode: mode,
-      autoOpponentType: document.getElementById('luanvo_auto_opponent')?.value || 'any',
-      targetId: document.getElementById('luanvo_target_id')?.value || '',
-      challengeFast: document.getElementById('luanvo_challenge_fast')?.checked || false,
-      hireBot: document.getElementById('luanvo_hire_bot')?.checked || false
+      opponentType: document.getElementById('luanvo_opponentType')?.value || 'any',
+      opponentId: document.getElementById('luanvo_opponentId')?.value || '',
+      challengeFast: document.getElementById('luanvo_challengeFast')?.checked || false,
+      hireBot: document.getElementById('luanvo_hireBot')?.checked || false,
+      secretMode: document.getElementById('luanvo_secretMode')?.checked || false,
+      rewardMode: document.getElementById('luanvo_rewardMode')?.checked || false,
+      changeNguHanh: document.getElementById('luanvo_changeNguHanh')?.checked || false
     };
     
+    log('📝 Config to save:', configData);
+    
     await saveTaskConfig(taskKey, configData);
+    
+    log('✅ Config saved successfully');
+    
     showSuccessNotif('✅ Đã lưu cài đặt Luận Võ!');
   };
 }
 
 // KHOÁNG MẠCH Complex UI Builder
 async function buildKhoangMachSettingsUI(config) {
-  const mode = config.khoangmach_mode || 'fullDay';
-  const mineType = config.khoangmach_mineType || 'thuong';
-  const mineId = config.khoangmach_mineId || '';
-  const reward = config.khoangmach_reward || '100';
+  // Không cần prefix khoangmach_ vì loadTaskConfig đã bỏ prefix rồi
+  const mode = config.mode || 'fullDay';
+  const mineType = config.mineType || 'thuong';
+  const mineId = config.mineId || '';
+  const reward = config.reward || '100';
   const pickupMode = config.pickupMode || 'full';
   const pickupInterval = config.pickupInterval || 5;
   
@@ -6308,7 +7630,7 @@ async function buildKhoangMachSettingsUI(config) {
       minesData = JSON.parse(savedData);
     }
   } catch (e) {
-    console.error('Error loading mines data:', e);
+    error('Error loading mines data:', e);
   }
   
   // Tạo options cho dropdown chọn mỏ
@@ -6487,10 +7809,10 @@ function setupKhoangMachHandlers(modal, taskKey, storedConfig) {
       const mode = modeRadio ? modeRadio.value : 'fullDay';
       
       const configData = {
-        khoangmach_mode: mode,
-        khoangmach_mineType: document.getElementById('khoangmach_minetype')?.value || 'thuong',
-        khoangmach_mineId: document.getElementById('khoangmach_mineid_select')?.value || '',
-        khoangmach_reward: document.getElementById('khoangmach_reward')?.value || '100',
+        mode: mode,
+        mineType: document.getElementById('khoangmach_minetype')?.value || 'thuong',
+        mineId: document.getElementById('khoangmach_mineid_select')?.value || '',
+        reward: document.getElementById('khoangmach_reward')?.value || '100',
         pickupMode: document.getElementById('khoangmach_pickup_mode')?.value || 'full',
         pickupInterval: parseInt(document.getElementById('khoangmach_interval')?.value) || 5,
         khoangmachSchedule: collectScheduleData('schedule-container')
@@ -6688,7 +8010,7 @@ function openGeneralSettingsModal() {
         
         // Save to storage
         safeStorageSet({ settings }, () => {
-          console.log('✅ General settings saved:', settings);
+          log('✅ General settings saved:', settings);
           showCustomModal('✅ Thành công', '<p style="text-align: center; font-size: 16px;">Đã lưu cài đặt chung!</p>', { maxWidth: '400px', duration: 2000 });
           // Close settings modal
           setTimeout(() => {
@@ -6703,26 +8025,26 @@ function openGeneralSettingsModal() {
   });
 }
 
-// Update UI Panel
+// Update UI Panel  
 function updateUIPanel() {
-  safeStorageGet(['isRunning', 'taskResults', 'taskStates'], (data) => {
-    const isRunning = data.isRunning || false;
+  // Update button states from scheduler instance
+  const isRunning = scheduler ? scheduler.isRunning : false;
+  
+  const startBtn = document.getElementById('hh3d-start-btn');
+  const stopBtn = document.getElementById('hh3d-stop-btn');
+  const status = document.getElementById('hh3d-status');
+  
+  if (!startBtn || !stopBtn || !status) return;
+  
+  startBtn.disabled = isRunning;
+  stopBtn.disabled = !isRunning;
+  startBtn.style.opacity = isRunning ? '0.5' : '1';
+  stopBtn.style.opacity = isRunning ? '1' : '0.5';
+  startBtn.style.cursor = isRunning ? 'not-allowed' : 'pointer';
+  stopBtn.style.cursor = isRunning ? 'pointer' : 'not-allowed';
+  
+  safeStorageGet(['taskResults'], (data) => {
     const taskResults = data.taskResults || {};
-    const taskStates = data.taskStates || UI_DEFAULT_TASK_STATES;
-    
-    renderUITasks(taskResults, taskStates);
-    
-    const startBtn = document.getElementById('hh3d-start-btn');
-    const stopBtn = document.getElementById('hh3d-stop-btn');
-    const status = document.getElementById('hh3d-status');
-    
-    if (!startBtn || !stopBtn || !status) return;
-    
-    startBtn.disabled = isRunning;
-    stopBtn.disabled = !isRunning;
-    startBtn.style.opacity = isRunning ? '0.5' : '1';
-    stopBtn.style.opacity = isRunning ? '1' : '0.5';
-    
     if (isRunning) {
       status.textContent = '🔄 Đang chạy tự động...';
     } else {
@@ -6730,6 +8052,11 @@ function updateUIPanel() {
       status.textContent = count > 0 ? `✅ Đã hoàn thành ${count} tasks` : 'Sẵn sàng';
     }
   });
+  
+  // Update toggle button state
+  if (typeof updateToggleButtonState === 'function') {
+    updateToggleButtonState();
+  }
 }
 
 // Initialize everything when DOM is ready
@@ -6737,17 +8064,40 @@ let scheduler;
 
 function initializeHH3DTool() {
     console.log('🚀 Initializing HH3D Tool...');
+    console.log('🎯 HH3D domain detected:', BASE_URL);
+    
+    // Initialize UI first
+    initializeUI();
     
     // Create scheduler instance
     scheduler = new TaskScheduler();
     
-    // Initialize scheduler
+    // Initialize scheduler (but don't auto-start)
     (async () => {
         await scheduler.init();
-        if (scheduler.isRunning) {
-            scheduler.start();
-        }
+        console.log('✅ Scheduler initialized');
+        
+        // Check if auto-start is enabled
+        const settingsData = await Storage.get(['settings']);
+        const settings = settingsData.settings || {};
+        const autoStart = settings.autoStart || false;
+        
+        // Force render tasks on first load with empty results
+        const data = await Storage.get(['taskStates']);
+        const taskStates = data.taskStates || UI_DEFAULT_TASK_STATES;
+        
+        console.log('📋 Rendering UI tasks with fresh state...');
+        renderUITasks({}, taskStates); // Empty results = all ready
         updateUIPanel();
+        
+        if (autoStart) {
+            console.log('🚀 Auto-start enabled, starting scheduler...');
+            await scheduler.start();
+            console.log('✅ Scheduler auto-started successfully');
+        } else {
+            console.log('⏸️ Auto-start disabled - Tasks will NOT run until you click Start button.');
+        }
+        
         console.log('✅ HH3D Tool Userscript Ready!');
     })();
     
