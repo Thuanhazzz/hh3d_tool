@@ -5834,10 +5834,10 @@ function initializeUI() {
   try {
     toggleBtn.innerHTML = `
       <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-        <img class="loading-gif" src="https://i.imgur.com/llF5iyg.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none;" alt="Loading">
+        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none;" alt="Loading">
         <div class="toggle-icon">
-          <svg class="icon-stop" width="24" height="24" viewBox="0 0 24 24" fill="white">
-            <rect x="6" y="6" width="12" height="12"/>
+          <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z"/>
           </svg>
         </div>
       </div>
@@ -5899,7 +5899,7 @@ function initializeUI() {
         height: 100%;
       }
       
-      #hh3d-tool-toggle svg.icon-stop {
+      #hh3d-tool-toggle svg.icon-play {
         position: absolute;
         transition: opacity 0.3s;
       }
@@ -5971,7 +5971,7 @@ function initializeUI() {
           height: 60px !important;
         }
         
-        #hh3d-tool-toggle svg.icon-stop {
+        #hh3d-tool-toggle svg.icon-play {
           width: 20px !important;
           height: 20px !important;
         }
@@ -6028,7 +6028,7 @@ function initializeUI() {
           height: 50px !important;
         }
         
-        #hh3d-tool-toggle svg.icon-stop {
+        #hh3d-tool-toggle svg.icon-play {
           width: 18px !important;
           height: 18px !important;
         }
@@ -6110,20 +6110,20 @@ function initializeUI() {
     const isRunning = scheduler ? scheduler.isRunning : false;
     
     const loadingGif = document.querySelector('#hh3d-tool-toggle .loading-gif');
-    const iconStop = document.querySelector('#hh3d-tool-toggle .icon-stop');
+    const iconPlay = document.querySelector('#hh3d-tool-toggle .icon-play');
     
-    if (!loadingGif || !iconStop) {
+    if (!loadingGif || !iconPlay) {
       return;
     }
     
     if (isRunning) {
-      // Show loading gif, hide stop icon
+      // Show loading gif, hide play icon
       loadingGif.style.display = 'block';
-      iconStop.style.display = 'none';
+      iconPlay.style.display = 'none';
     } else {
-      // Hide loading gif, show stop icon
+      // Hide loading gif, show play icon
       loadingGif.style.display = 'none';
-      iconStop.style.display = 'block';
+      iconPlay.style.display = 'block';
     }
   }
   
