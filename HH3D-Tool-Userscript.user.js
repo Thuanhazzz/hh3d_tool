@@ -5833,8 +5833,8 @@ function initializeUI() {
   
   try {
     toggleBtn.innerHTML = `
-      <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none; border-radius: 50%; object-fit: cover;" alt="Loading">
+      <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%;">
+        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none; border-radius: 50%; object-fit: cover; clip-path: circle(50%);" alt="Loading">
         <div class="toggle-icon">
           <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
             <path d="M8 5v14l11-7z"/>
@@ -5880,6 +5880,8 @@ function initializeUI() {
       
       #hh3d-tool-toggle .toggle-btn-inner {
         position: relative;
+        overflow: hidden;
+        border-radius: 50%;
       }
       
       #hh3d-tool-toggle .loading-gif {
@@ -5889,6 +5891,7 @@ function initializeUI() {
         pointer-events: none;
         border-radius: 50%;
         object-fit: cover;
+        clip-path: circle(50%);
       }
       
       #hh3d-tool-toggle .toggle-icon {
