@@ -1479,9 +1479,9 @@ async function callAutoAccept( postHeaders, challengeId, targetUserId, opponentN
 
 // ⭐ TASK ORDER
 const TASK_ORDER = [
-  "checkin", "phucloi", "tele", "thiluyen", "hoangvuc", 
-  "vandap", "luanvo", "tienduyen", "khoangmach", 
-  "dothach", "bicanh", "vongquay", "tangqua",
+  "checkin", "tele", "phucloi", "thiluyen", "vandap", 
+  "luanvo","hoangvuc",  "khoangmach",  "tienduyen",
+  "dothach", "bicanh", "vongquay", 'hdhn', "tangqua"
   // "noel", "duatop"
 ];
 
@@ -5799,6 +5799,7 @@ class TaskScheduler {
 // ==================== FLOATING UI PANEL ====================
 const UI_TASK_NAMES = {
   checkin: '📅 Điểm Danh',
+  tele: '📱 Tế Lễ',
   phucloi: '🎁 Phúc Lợi',
   vandap: '❓ Vấn Đáp',
   luanvo: '⚔️ Luận Võ',
@@ -5811,15 +5812,15 @@ const UI_TASK_NAMES = {
   vongquay: '🎰 Vòng Quay',
   tangqua: '🎁 Tặng Quà',
   noel: '🎄 Noel',
-  duatop: '🏆 Đua Top',
-  tele: '📱 Tế Lễ'
+  duatop: '🏆 Đua Top',  
+  hdhn: '📅 Hoạt Động Hàng Ngày' // hoạt động hàng ngày
 };
 
 const UI_DEFAULT_TASK_STATES = {
   checkin: true, phucloi: true, vandap: true, luanvo: false,
   tienduyen: true, thiluyen: true, hoangvuc: true, khoangmach: false,
   dothach: false, bicanh: true, vongquay: true, tangqua: false,
-  noel: false, duatop: false, tele: true
+  noel: false, duatop: false, tele: true, hdhn: true
 };
 
 function initializeUI() {
