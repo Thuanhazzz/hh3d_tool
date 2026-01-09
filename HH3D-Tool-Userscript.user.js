@@ -5834,7 +5834,7 @@ function initializeUI() {
   try {
     toggleBtn.innerHTML = `
       <div class="toggle-btn-inner" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%;">
-        <img class="loading-gif" src="https://raw.githubusercontent.com/Thuanhazzz/hh3d_tool/main/circular-loading.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none; border-radius: 50%; object-fit: cover; clip-path: circle(50%);" alt="Loading">
+        <img class="loading-gif" src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3N2cnBsaXZkMjQ3MHFmYnR2dWNoaDMwaDIxbHRqdDV5ZDF5ZXNjNSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/2zZNmrvguyPTS06rK0/giphy.gif" style="display: none; position: absolute; width: 70px; height: 70px; pointer-events: none; border-radius: 50%; object-fit: cover; clip-path: circle(50%);" alt="Loading">
         <div class="toggle-icon">
           <svg class="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="white">
             <path d="M8 5v14l11-7z"/>
