@@ -4912,6 +4912,12 @@
                 
                 // ⭐ BƯỚC 3: VÒNG LẶP CHẠY LIÊN TỤC
                 const runCycle = async () => {
+                    // ⭐ KIỂM TRA XEM CÓ NÊN TIẾP TỤC HAY KHÔNG
+                    if (!luanVoAutoRunTimer) {
+                        console.log('[Luận Võ Auto] ⏹️ Đã bị dừng, không tiếp tục.');
+                        return;
+                    }
+                    
                     if (luanVoRunCount >= maxCount) {
                         showNotification(`✅ Đã chạy đủ ${maxCount} lần. Dừng lại.`, 'success');
                         stopAutoRerun();
@@ -4931,6 +4937,8 @@
                             const nonce = await getNonce();
                             if (nonce) {
                                 for(let attempt = 1; attempt <= 5; attempt++) {
+                                    // Kiểm tra có bị dừng giữa chừng không
+                                    if (!luanVoAutoRunTimer) return;
                                     await luanvo.receiveReward(nonce);
                                     await new Promise(resolve => setTimeout(resolve, 1000));
                                 }
@@ -4952,6 +4960,9 @@
                                 };
                                 let currentElement = '';
                                 for (let i = 1; i <= 5; i++) {
+                                    // Kiểm tra có bị dừng giữa chừng không
+                                    if (!luanVoAutoRunTimer) return;
+                                    
                                     const changeData = await (await fetch(ajaxUrl, {
                                         method: 'POST',
                                         headers: headers,
@@ -4974,10 +4985,16 @@
                             }
                         }
                         
+                        // ⭐ Kiểm tra lại trước khi tiếp tục
+                        if (!luanVoAutoRunTimer) {
+                            console.log('[Luận Võ Auto] ⏹️ Đã bị dừng sau khi hoàn thành tác vụ.');
+                            return;
+                        }
+                        
                         // ⭐ Thông báo kết quả chạy thành công
                         showNotification(`✅ Hoàn tất lần ${luanVoRunCount}/${maxCount}!`, 'success');
                         
-                        if (luanVoRunCount < maxCount) {
+                        if (luanVoRunCount < maxCount && luanVoAutoRunTimer) {
                             const nextRunTime = new Date(Date.now() + delaySeconds * 1000);
                             showNotification(`⏰ Sẽ chạy lần ${luanVoRunCount + 1}/${maxCount} lúc ${nextRunTime.toLocaleTimeString('vi-VN')}`, 'info');
                             
