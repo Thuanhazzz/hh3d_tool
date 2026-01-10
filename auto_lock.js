@@ -4978,8 +4978,9 @@
                             const hoangVucUrl = `${weburl}hoang-vuc?t`;
                             const { nonce } = await this.getNonceAndRemainingAttacks(hoangVucUrl);
                             if (nonce) {
-                                const ajaxUrl = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
+                                const ajaxUrl = `${weburl}wp-content/themes/halimmovies-child/hh3d-ajax.php`;
                                 const headers = {
+                                    "accept": "application/json, text/javascript, */*;q=0.01",
                                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                                     'X-Requested-With': 'XMLHttpRequest',
                                     "referer": hoangVucUrl,
