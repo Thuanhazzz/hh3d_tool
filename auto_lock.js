@@ -4794,7 +4794,7 @@
             if (localStorage.getItem('luanVoJoinBattle') === null) localStorage.setItem('luanVoJoinBattle', '1');
             if (localStorage.getItem('luanVoEnableAutoAccept') === null) localStorage.setItem('luanVoEnableAutoAccept', '1');
             if (localStorage.getItem('luanVoAutoRerunEnabled') === null) localStorage.setItem('luanVoAutoRerunEnabled', '0');
-            if (localStorage.getItem('luanVoRerunDelaySeconds') === null) localStorage.setItem('luanVoRerunDelaySeconds', '120');
+            if (localStorage.getItem('luanVoRerunDelaySeconds') === null) localStorage.setItem('luanVoRerunDelaySeconds', '30');
             if (localStorage.getItem('luanVoRerunMaxCount') === null) localStorage.setItem('luanVoRerunMaxCount', '200');
             if (localStorage.getItem('luanVoReceiveReward') === null) localStorage.setItem('luanVoReceiveReward', '1');
             if (localStorage.getItem('luanVoChangeElement') === null) localStorage.setItem('luanVoChangeElement', '0');
@@ -4815,7 +4815,7 @@
                 const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
                 const joinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
                 const enableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
-                const rerunDelaySeconds = localStorage.getItem('luanVoRerunDelaySeconds') || '120';
+                const rerunDelaySeconds = localStorage.getItem('luanVoRerunDelaySeconds') || '30';
                 const rerunMaxCount = localStorage.getItem('luanVoRerunMaxCount') || '200';
                 const receiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
                 const changeElement = localStorage.getItem('luanVoChangeElement') === '1';
@@ -4863,11 +4863,11 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; font-size: 12px;">
                             <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
                                 <input type="checkbox" id="luanvo-receive-reward" ${receiveReward ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
-                                <span>🎁 Nhận thưởng</span>
+                                <span>🎁 Nhận thưởng (5 lần)</span>
                             </label>
                             <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
                                 <input type="checkbox" id="luanvo-change-element" ${changeElement ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
-                                <span>🔄 Đổi ngũ hành (4 lần)</span>
+                                <span>🔄 Đổi ngũ hành (5 lần)</span>
                             </label>
                         </div>
                         <small style="color: #888; display: block; margin-top: 4px; font-size: 11px;">💡 Dùng nút ▶️ bên ngoài để bật/tắt</small>
@@ -4965,8 +4965,10 @@
                             console.log('[Luận Võ Auto] 🎁 Đang nhận thưởng...');
                             const nonce = await getNonce();
                             if (nonce) {
-                                await luanvo.receiveReward(nonce);
-                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                for(let attempt = 1; attempt <= 5; attempt++) {
+                                    await luanvo.receiveReward(nonce);
+                                    await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
                             }
                         }
                         
@@ -4981,8 +4983,8 @@
                                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                                     'X-Requested-With': 'XMLHttpRequest',
                                 };
-                                
-                                for (let i = 1; i <= 4; i++) {
+                                let currentElement = '';
+                                for (let i = 1; i <= 5; i++) {
                                     const payloadChange = new URLSearchParams({ action: 'change_user_element', nonce });
                                     const changeData = await (await fetch(ajaxUrl, {
                                         method: 'POST',
@@ -4993,14 +4995,15 @@
                                     
                                     if (changeData.success) {
                                         const newElement = changeData.data.new_element;
-                                        console.log(`[Luận Võ Auto] 🔄 Đổi lần ${i}/4 -> ${newElement}`);
+                                        console.log(`[Luận Võ Auto] 🔄 Đổi lần ${i}/5 -> ${newElement}`);
+                                        currentElement += newElement + '->';
                                         await new Promise(resolve => setTimeout(resolve, 500));
                                     } else {
                                         console.error(`[Luận Võ Auto] ❌ Lỗi khi đổi ngũ hành lần ${i}:`, changeData.message || 'Không xác định.');
                                         break;
                                     }
                                 }
-                                showNotification('✅ Đã đổi ngũ hành 4 lần!', 'success');
+                                showNotification(`✅ Đã đổi ngũ hành 5 lần! ${currentElement}`, 'success');
                             }
                         }
                         
