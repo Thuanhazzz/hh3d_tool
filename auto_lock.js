@@ -2049,57 +2049,9 @@
          * Hàm chính: Chạy toàn bộ quy trình Luận Võ.
          */
         async startLuanVo(nonce) {
-            const securityToken = await getSecurityToken(weburl + 'luan-vo-duong?t');
-            // Bước 2: Tham gia trận đấu
-            if (!taskTracker.getTaskStatus(accountId, 'luanvo').battle_joined) {
-                const joinResult = await this.sendApiRequest(
-                    'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {action: 'join_battle', security_token: securityToken}
-                );
-                if (joinResult && joinResult.success === true) {
-                    console.log(`✅ Tham gia luận võ thành công.`);
-                    taskTracker.updateTask(accountId, 'luanvo', 'battle_joined', true);
-                } else if (joinResult.message === 'Bạn đã tham gia Luận Võ Đường hôm nay rồi!') {
-                    console.log(`✅ Tham gia luận võ thành công.`);
-                    taskTracker.updateTask(accountId, 'luanvo', 'battle_joined', true);
-                } else {
-                    showNotification('Lỗi máy chủ hoặc lỗi mạng khi tham gia luận võ', 'error');
-                }
-            } else {
-                console.log(`${this.logPrefix} Chưa tham gia luận võ trước đó.`);
-            }
-
-
-            // Bước 3: Đảm bảo tự động chấp nhận khiêu chiến
-            if (!taskTracker.getTaskStatus(accountId, 'luanvo').auto_accept) {
-                const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
-                if (!autoAcceptSuccess) {
-                    showNotification('⚠️ Tham gia thành công nhưng không thể bật tự động chấp nhận.', 'warn');
-                } else {
-                    console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
-                }
-            }
-        }
-        async doLuanVo(autoChallenge) {
-
-            const nonce = await getNonce();
-            if (!nonce) {
-                showNotification(' Lỗi: Không thể❌ lấy nonce cho Luận Võ.', 'error');
-                return;
-            }
-
-            // ⭐ ĐỌC CÀI ĐẶT TỪ LOCALSTORAGE
-            const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
-            const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
             const shouldJoinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
             const shouldEnableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
-
-            console.log(`${this.logPrefix} 📋 Cài đặt:`, {
-                challengeMode,
-                targetUserId,
-                shouldJoinBattle,
-                shouldEnableAutoAccept
-            });
-
+            
             // ⭐ BƯỚC 2: THAM GIA LUẬN VÕ (Tuỳ chọn)
             if (shouldJoinBattle) {
                 const securityToken = await getSecurityToken(weburl + 'luan-vo-duong?t');
@@ -2137,6 +2089,18 @@
             } else {
                 console.log(`${this.logPrefix} ⏭️ Bỏ qua bước bật tự động chấp nhận (theo cài đặt).`);
             }
+        }
+        async doLuanVo(autoChallenge) {
+
+            const nonce = await getNonce();
+            if (!nonce) {
+                showNotification(' Lỗi: Không thể❌ lấy nonce cho Luận Võ.', 'error');
+                return;
+            }
+
+            // ⭐ ĐỌC CÀI ĐẶT TỪ LOCALSTORAGE
+            const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
+            const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';                       
             
             // ⭐ BƯỚC 4: KHIÊU CHIẾN
             if (!autoChallenge) {
@@ -4993,7 +4957,7 @@
                                         body: `action=change_user_element&nonce=${nonce}`,
                                         credentials: 'include'
                                     })).json();
-                                    
+                                    showNotification(`[Luận Võ Auto] ${JSON.stringify(changeData)} `);
                                     if (changeData.success) {
                                         const newElement = changeData.data.new_element;
                                         console.log(`[Luận Võ Auto] 🔄 Đổi lần ${i}/5 -> ${newElement}`);
@@ -5001,7 +4965,6 @@
                                         await new Promise(resolve => setTimeout(resolve, 500));
                                     } else {
                                         console.error(`[Luận Võ Auto] ❌ Lỗi khi đổi ngũ hành lần ${i}:`, changeData.message || 'Không xác định.');
-                                        break;
                                     }
                                 }
                                 if(currentElement === '') currentElement = 'Không xác định';
