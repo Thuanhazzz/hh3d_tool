@@ -2047,11 +2047,14 @@
                     } else {
                         taskTracker.markTaskUndone(accountId, 'luanvo');
                     }
-                    // taskTracker.markTaskDone(accountId, 'luanvo');
                     return;
                 } else if (response.message === "Đạo hữu đã nhận thưởng trong ngày hôm nay.") {
                     showNotification('🎁 Bạn đã nhận thưởng Luận Võ hôm nay rồi!', 'info')
-                    // taskTracker.markTaskDone(accountId, 'luanvo');
+                    if (shouldJoinBattle) {
+                        taskTracker.markTaskDone(accountId, 'luanvo');
+                    } else {
+                        taskTracker.markTaskUndone(accountId, 'luanvo');
+                    }
                     return;
                 } else {
                     const errorMessage = response.message || 'Lỗi không xác định khi nhận thưởng.';
