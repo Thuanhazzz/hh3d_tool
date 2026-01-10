@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
-// @namespace     HH3D_Tool_Clone
-// @version       5.3.1
-// @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động (sửa một chút so với nguyên bản)
-// @author        Dr. Trune & Krizk
+// @namespace     Tampermonkey
+// @version       5.3
+// @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động
+// @author        Dr. Trune
 // @match         https://hoathinh3d.li/*
 // @require       https://cdn.jsdelivr.net/npm/sweetalert2@11.26.12/dist/sweetalert2.all.min.js
 // @run-at        document-start
@@ -2086,70 +2086,161 @@
                 showNotification(' Lỗi: Không thể❌ lấy nonce cho Luận Võ.', 'error');
                 return;
             }
-            await this.startLuanVo(nonce);
-            // Bước 4: Khiêu chiến người chơi
+
+            // ⭐ ĐỌC CÀI ĐẶT TỪ LOCALSTORAGE
+            const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
+            const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
+            const shouldJoinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
+            const shouldEnableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
+
+            console.log(`${this.logPrefix} 📋 Cài đặt:`, {
+                challengeMode,
+                targetUserId,
+                shouldJoinBattle,
+                shouldEnableAutoAccept
+            });
+
+            // ⭐ BƯỚC 2: THAM GIA LUẬN VÕ (Tuỳ chọn)
+            if (shouldJoinBattle) {
+                const securityToken = await getSecurityToken(weburl + 'luan-vo-duong?t');
+                
+                if (!taskTracker.getTaskStatus(accountId, 'luanvo').battle_joined) {
+                    const joinResult = await this.sendApiRequest(
+                        'wp-json/luan-vo/v1/join-battle', 'POST', nonce, {action: 'join_battle', security_token: securityToken}
+                    );
+                    if (joinResult && joinResult.success === true) {
+                        console.log(`✅ Tham gia luận võ thành công.`);
+                        taskTracker.updateTask(accountId, 'luanvo', 'battle_joined', true);
+                    } else if (joinResult.message === 'Bạn đã tham gia Luận Võ Đường hôm nay rồi!') {
+                        console.log(`✅ Đã tham gia luận võ trước đó.`);
+                        taskTracker.updateTask(accountId, 'luanvo', 'battle_joined', true);
+                    } else {
+                        showNotification('Lỗi máy chủ hoặc lỗi mạng khi tham gia luận võ', 'error');
+                    }
+                } else {
+                    console.log(`${this.logPrefix} Đã tham gia luận võ trước đó.`);
+                }
+            } else {
+                console.log(`${this.logPrefix} ⏭️ Bỏ qua bước tham gia luận võ (theo cài đặt).`);
+            }
+
+            // ⭐ BƯỚC 3: BẬT TỰ ĐỘNG CHẤP NHẬN (Tuỳ chọn)
+            if (shouldEnableAutoAccept) {
+                if (!taskTracker.getTaskStatus(accountId, 'luanvo').auto_accept) {
+                    const autoAcceptSuccess = await this.ensureAutoAccept(nonce);
+                    if (!autoAcceptSuccess) {
+                        showNotification('⚠️ Không thể bật tự động chấp nhận.', 'warn');
+                    } else {
+                        console.log(`${this.logPrefix} ✅ Tự động chấp nhận đã được bật.`);
+                    }
+                }
+            } else {
+                console.log(`${this.logPrefix} ⏭️ Bỏ qua bước bật tự động chấp nhận (theo cài đặt).`);
+            }
+            
+            // ⭐ BƯỚC 4: KHIÊU CHIẾN
             if (!autoChallenge) {
                 //Hiện hộp thoại thông báo để người chơi tới trang luận võ thủ công
                 this.goToLuanVoPage();
                 return;
             }
 
-            // Vòng lặp gửi khiêu chiến
-            let shouldAttackOnline = false;
+            // ⭐ CHẾ ĐỘ THƯỜNG: Tự động chọn đối thủ
+            if (challengeMode === 'auto') {
+                console.log(`${this.logPrefix} 🤖 Chế độ: Tự động chọn đối thủ`);
+                
+                // Vòng lặp gửi khiêu chiến (logic cũ)
+                let shouldAttackOnline = false;
 
-            while (true) {
+                while (true) {
+                    let allFollowingUsers = await this.getFollowingUsers(nonce);
+
+                    // Nếu không có dữ liệu thì coi như rỗng
+                    if (!Array.isArray(allFollowingUsers) || allFollowingUsers.length === 0) {
+                        console.log("⚠️ Không có user nào trong danh sách theo dõi.");
+                        shouldAttackOnline = true; // chuyển sang attack online luôn
+                    }
+
+                    let myCanSend = allFollowingUsers?.[0]?.can_send_count ?? 5;
+                    console.log(`🔄 Vòng lặp khiêu chiến mới. Lượt có thể gửi: ${myCanSend}`);
+                    if (myCanSend <= 0) break;
+
+                    if (!shouldAttackOnline) {
+                        // Lọc những user có thể khiêu chiến (auto_accept + còn lượt)
+                        let canChallengeUsers = (allFollowingUsers || []).filter(u => u.auto_accept && u.can_receive_count > 0);
+                        console.log(`👥 Tìm thấy ${canChallengeUsers.length} người theo dõi có thể khiêu chiến (auto_accept + còn lượt).`);
+                        if (canChallengeUsers.length > 0) {
+                            // Khiêu chiến user đầu tiên
+                            console.log(`🎯 Chuẩn bị khiêu chiến với user ID: ${canChallengeUsers[0].id}`);
+                            const success = await this.sendChallenge(canChallengeUsers[0].id, nonce);
+                            if (success) {
+                                myCanSend--;
+                                await this.delay(4500);
+                            }
+                            continue; // quay lại kiểm tra following
+                        }
+
+                        // Nếu không còn ai có auto_accept, kiểm tra những người còn lượt
+                        let canReceiveUsers = (allFollowingUsers || []).filter(u => u.can_receive_count > 0);
+                        if (canReceiveUsers.length === 0) {
+                            shouldAttackOnline = true;
+                        } else break;
+                    }
+
+                    // Nếu không còn ai để khiêu chiến từ following và user đồng ý, tấn công online
+                    if (shouldAttackOnline) {
+                        while (myCanSend > 0) {
+                            let allOnlineUsers = await this.getOnlineUsers(nonce);
+                            if (!Array.isArray(allOnlineUsers) || allOnlineUsers.length === 0) break;
+
+                            const success = await this.sendChallenge(allOnlineUsers[0].id, nonce);
+                            if (success) {
+                                myCanSend--;
+                                await this.delay(4500);
+                            }
+                        }
+                        break; // xong attack online thì thoát vòng lặp
+                    }
+
+                    // Nếu vẫn còn lượt nhưng không ai để khiêu chiến, dừng vòng lặp
+                    if (myCanSend <= 0) break;
+                }
+            } 
+            // ⭐ CHẾ ĐỘ MỚI: Khiêu chiến theo ID cụ thể
+            else if (challengeMode === 'manual') {
+                console.log(`${this.logPrefix} 🎯 Chế độ: Khiêu chiến theo ID cụ thể`);
+                
+                if (!targetUserId) {
+                    showNotification('❌ Chưa cài đặt ID người chơi để khiêu chiến!', 'error');
+                    return;
+                }
+
+                // Lấy thông tin lượt còn lại
                 let allFollowingUsers = await this.getFollowingUsers(nonce);
-
-                // Nếu không có dữ liệu thì coi như rỗng
-                if (!Array.isArray(allFollowingUsers) || allFollowingUsers.length === 0) {
-                    console.log("⚠️ Không có user nào trong danh sách theo dõi.");
-                    shouldAttackOnline = true; // chuyển sang attack online luôn
-                }
-
                 let myCanSend = allFollowingUsers?.[0]?.can_send_count ?? 5;
-                console.log(`🔄 Vòng lặp khiêu chiến mới. Lượt có thể gửi: ${myCanSend}`);
-                if (myCanSend <= 0) break;
-
-                if (!shouldAttackOnline) {
-                    // Lọc những user có thể khiêu chiến (auto_accept + còn lượt)
-                    let canChallengeUsers = (allFollowingUsers || []).filter(u => u.auto_accept && u.can_receive_count > 0);
-                    console.log(`👥 Tìm thấy ${canChallengeUsers.length} người theo dõi có thể khiêu chiến (auto_accept + còn lượt).`);
-                    if (canChallengeUsers.length > 0) {
-                        // Khiêu chiến user đầu tiên
-                        console.log(`🎯 Chuẩn bị khiêu chiến với user ID: ${canChallengeUsers[0].id}`);
-                        const success = await this.sendChallenge(canChallengeUsers[0].id, nonce);
-                        if (success) {
-
-                            myCanSend--;
-                            await this.delay(4500);
+                
+                console.log(`🎯 Sẽ khiêu chiến user ID: ${targetUserId} (Còn ${myCanSend} lượt)`);
+                
+                // Vòng lặp khiêu chiến cùng 1 người
+                while (myCanSend > 0) {
+                    console.log(`🔄 Đang gửi khiêu chiến đến ${targetUserId}... (Còn ${myCanSend} lượt)`);
+                    
+                    const success = await this.sendChallenge(targetUserId, nonce);
+                    
+                    if (success) {
+                        myCanSend--;
+                        
+                        if (myCanSend > 0) {
+                            await this.delay(4500); // Delay giữa các lần khiêu chiến
                         }
-                        continue; // quay lại kiểm tra following
+                    } else {
+                        // Nếu thất bại, có thể đối thủ hết lượt hoặc lỗi khác
+                        console.warn(`⚠️ Không thể khiêu chiến ${targetUserId}. Dừng lại.`);
+                        break;
                     }
-
-                    // Nếu không còn ai có auto_accept, kiểm tra những người còn lượt
-                    let canReceiveUsers = (allFollowingUsers || []).filter(u => u.can_receive_count > 0);
-                    if (canReceiveUsers.length === 0) {
-                        shouldAttackOnline = true;
-                    } else break;
                 }
-
-                // Nếu không còn ai để khiêu chiến từ following và user đồng ý, tấn công online
-                if (shouldAttackOnline) {
-                    while (myCanSend > 0) {
-                        let allOnlineUsers = await this.getOnlineUsers(nonce);
-                        if (!Array.isArray(allOnlineUsers) || allOnlineUsers.length === 0) break;
-
-                        const success = await this.sendChallenge(allOnlineUsers[0].id, nonce);
-                        if (success) {
-                            myCanSend--;
-                            await this.delay(4500);
-                        }
-                    }
-                    break; // xong attack online thì thoát vòng lặp
-                }
-
-                // Nếu vẫn còn lượt nhưng không ai để khiêu chiến, dừng vòng lặp
-                if (myCanSend <= 0) break;
+                
+                console.log(`✅ Hoàn thành khiêu chiến theo ID. Đã gửi ${5 - myCanSend} lượt.`);
             }
 
             // Bước 5: Nhận thưởng nếu có
@@ -4678,28 +4769,161 @@
         createLuanVoMenu(parentGroup) {
             const luanVoButton = document.createElement('button');
             this.buttonMap.set('luanvo', luanVoButton);
+            
+            // ⭐ NÚT CÀI ĐẶT CHI TIẾT
             const luanVoSettingsButton = document.createElement('button');
             luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
+            luanVoSettingsButton.textContent = '⚙️';
+            luanVoSettingsButton.title = 'Cài đặt Luận Võ';
 
+            // Khởi tạo giá trị mặc định
             if (localStorage.getItem('luanVoAutoChallenge') === null) {
-            localStorage.setItem('luanVoAutoChallenge', '1');
+                localStorage.setItem('luanVoAutoChallenge', '1');
             }
-            let autoChallengeEnabled = localStorage.getItem('luanVoAutoChallenge') === '1';
+            if (localStorage.getItem('luanVoChallengeMode') === null) {
+                localStorage.setItem('luanVoChallengeMode', 'auto'); // auto hoặc manual
+            }
+            if (localStorage.getItem('luanVoTargetUserId') === null) {
+                localStorage.setItem('luanVoTargetUserId', '');
+            }
+            if (localStorage.getItem('luanVoJoinBattle') === null) {
+                localStorage.setItem('luanVoJoinBattle', '1');
+            }
+            if (localStorage.getItem('luanVoEnableAutoAccept') === null) {
+                localStorage.setItem('luanVoEnableAutoAccept', '1');
+            }
 
-            const updateSettingButtonState = (isEnabled) => {
-                luanVoSettingsButton.textContent = isEnabled ? '✅' : '❌';
-                luanVoSettingsButton.title = isEnabled ? 'Tự động thực hiện Luận Võ: Bật' : 'Tự động thực hiện Luận Võ: Tắt';
+            // Tạo modal cài đặt
+            const createSettingsModal = () => {
+                // Xóa modal cũ nếu có
+                const oldModal = document.getElementById('luanvo-settings-modal');
+                if (oldModal) oldModal.remove();
+
+                const modal = document.createElement('div');
+                modal.id = 'luanvo-settings-modal';
+                modal.style.cssText = `
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.7); z-index: 999999;
+                    display: flex; align-items: center; justify-content: center;
+                `;
+
+                const panel = document.createElement('div');
+                panel.style.cssText = `
+                    background: #2d2d2d; border-radius: 12px; padding: 20px;
+                    max-width: 500px; width: 90%; color: #fff;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                `;
+
+                // Lấy giá trị hiện tại
+                const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
+                const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
+                const joinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
+                const enableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
+
+                panel.innerHTML = `
+                    <h3 style="margin: 0 0 20px 0; color: #4fc3f7; font-size: 20px;">⚙️ Cài đặt Luận Võ</h3>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #ffd700;">
+                            🎯 Chế độ khiêu chiến:
+                        </label>
+                        <select id="luanvo-challenge-mode" style="width: 100%; padding: 8px; border-radius: 5px; background: #1a1a1a; color: #fff; border: 1px solid #555;">
+                            <option value="auto" ${challengeMode === 'auto' ? 'selected' : ''}>Tự động chọn đối thủ</option>
+                            <option value="manual" ${challengeMode === 'manual' ? 'selected' : ''}>Khiêu chiến theo ID cụ thể</option>
+                        </select>
+                    </div>
+
+                    <div id="target-user-container" style="margin-bottom: 15px; ${challengeMode === 'auto' ? 'display: none;' : ''}">
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #ffd700;">
+                            👤 ID người chơi muốn khiêu chiến:
+                        </label>
+                        <input type="text" id="luanvo-target-user-id" value="${targetUserId}" 
+                            placeholder="Nhập ID người chơi..."
+                            style="width: 100%; padding: 8px; border-radius: 5px; background: #1a1a1a; color: #fff; border: 1px solid #555;">
+                        <small style="color: #999; display: block; margin-top: 5px;">
+                            💡 Chỉ nhập 1 ID duy nhất. Script sẽ liên tục khiêu chiến người này.
+                        </small>
+                    </div>
+
+                    <div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-join-battle" ${joinBattle ? 'checked' : ''}
+                                style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
+                            <span style="color: #4fc3f7;">⚔️ Tham gia Luận Võ Đường (Bước 2)</span>
+                        </label>
+                        <small style="color: #999; display: block; margin-top: 5px; margin-left: 28px;">
+                            Tự động gọi API tham gia luận võ khi bắt đầu
+                        </small>
+                    </div>
+
+                    <div style="margin-bottom: 20px; padding: 10px; background: #1a1a1a; border-radius: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-enable-auto-accept" ${enableAutoAccept ? 'checked' : ''}
+                                style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
+                            <span style="color: #4fc3f7;">✅ Bật tự động chấp nhận (Bước 3)</span>
+                        </label>
+                        <small style="color: #999; display: block; margin-top: 5px; margin-left: 28px;">
+                            Cho phép người khác khiêu chiến bạn tự động
+                        </small>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button id="luanvo-cancel-btn" style="padding: 10px 20px; border: none; border-radius: 5px; background: #555; color: #fff; cursor: pointer; font-weight: bold;">
+                            Hủy
+                        </button>
+                        <button id="luanvo-save-btn" style="padding: 10px 20px; border: none; border-radius: 5px; background: #4caf50; color: #fff; cursor: pointer; font-weight: bold;">
+                            💾 Lưu
+                        </button>
+                    </div>
+                `;
+
+                modal.appendChild(panel);
+                document.body.appendChild(modal);
+
+                // Logic ẩn/hiện ô nhập ID
+                const modeSelect = panel.querySelector('#luanvo-challenge-mode');
+                const targetContainer = panel.querySelector('#target-user-container');
+                modeSelect.addEventListener('change', () => {
+                    targetContainer.style.display = modeSelect.value === 'manual' ? 'block' : 'none';
+                });
+
+                // Nút Hủy
+                panel.querySelector('#luanvo-cancel-btn').onclick = () => modal.remove();
+
+                // Click ngoài modal để đóng
+                modal.onclick = (e) => {
+                    if (e.target === modal) modal.remove();
+                };
+
+                // Nút Lưu
+                panel.querySelector('#luanvo-save-btn').onclick = () => {
+                    const mode = panel.querySelector('#luanvo-challenge-mode').value;
+                    const userId = panel.querySelector('#luanvo-target-user-id').value.trim();
+                    const joinBattleChecked = panel.querySelector('#luanvo-join-battle').checked;
+                    const autoAcceptChecked = panel.querySelector('#luanvo-enable-auto-accept').checked;
+
+                    // Validate
+                    if (mode === 'manual' && !userId) {
+                        showNotification('❌ Vui lòng nhập ID người chơi khi chọn chế độ thủ công!', 'error');
+                        return;
+                    }
+
+                    // Lưu vào localStorage
+                    localStorage.setItem('luanVoChallengeMode', mode);
+                    localStorage.setItem('luanVoTargetUserId', userId);
+                    localStorage.setItem('luanVoJoinBattle', joinBattleChecked ? '1' : '0');
+                    localStorage.setItem('luanVoEnableAutoAccept', autoAcceptChecked ? '1' : '0');
+                    
+                    // Luôn bật autoChallenge khi lưu cài đặt
+                    localStorage.setItem('luanVoAutoChallenge', '1');
+
+                    showNotification('✅ Đã lưu cài đặt Luận Võ!', 'success');
+                    modal.remove();
+                };
             };
-            updateSettingButtonState(autoChallengeEnabled);
-            parentGroup.appendChild(luanVoSettingsButton);
 
-            luanVoSettingsButton.addEventListener('click', () => {
-                autoChallengeEnabled = !autoChallengeEnabled;
-                localStorage.setItem('luanVoAutoChallenge', autoChallengeEnabled ? '1' : '0');
-                updateSettingButtonState(autoChallengeEnabled);
-                const message = autoChallengeEnabled ? 'Tự động thực hiện Luận Võ đã được bật' : 'Tự động thực hiện Luận Võ đã được tắt';
-                showNotification(`[Luận Võ] ${message}`, 'info');
-            });
+            luanVoSettingsButton.addEventListener('click', createSettingsModal);
+            parentGroup.appendChild(luanVoSettingsButton);
 
             luanVoButton.textContent = 'Luận Võ';
             luanVoButton.classList.add('custom-script-menu-button', 'custom-script-auto-btn');
@@ -4707,8 +4931,8 @@
                 luanVoButton.disabled = true;
                 luanVoButton.textContent = 'Đang xử lý...';
                 try {
-                    const currentAutoChallenge = localStorage.getItem('luanVoAutoChallenge') === '1';
-                    await luanvo.doLuanVo(currentAutoChallenge);
+                    // Luôn dùng autoChallenge = true vì đã có cài đặt chi tiết
+                    await luanvo.doLuanVo(true);
                 } finally {
                     luanVoButton.textContent = 'Luận Võ';
                     this.updateButtonState('luanvo');
