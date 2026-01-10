@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D - Menu Tùy Chỉnh
 // @namespace     HH3D_Tool_Tampermonkey
-// @version       5.3.1
+// @version       5.3.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động(sửa một chút so với bản gốc)
 // @author        Dr. Trune & Krizk
 // @match         https://hoathinh3d.li/*
