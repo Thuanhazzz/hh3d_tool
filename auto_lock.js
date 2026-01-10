@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name          HH3D - Menu Tùy Chỉnh
+// @name          HH3D Auto - Edited by Krizk
 // @namespace     HH3D_Tool_Tampermonkey
 // @version       5.3.2
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động(sửa một chút so với bản gốc)
@@ -3815,8 +3815,8 @@
                 console.error("Lỗi: Stage phải là 'stage1' hoặc 'stage2'.");
                 return false;
             }
-
-            const bodyData = `action=daily_activity_reward&stage=${stage}`;
+            const securityToken = await getSecurityToken(weburl + 'hoat-dong-ngay?t=' + Date.now());
+            const bodyData = `action=daily_activity_reward&stage=${stage}&security_token=${encodeURIComponent(securityToken)}`;
 
             try {
                 const response = await fetch(this.ajaxUrl, {
