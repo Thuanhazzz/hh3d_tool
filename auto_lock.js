@@ -3815,7 +3815,7 @@
                 console.error("Lỗi: Stage phải là 'stage1' hoặc 'stage2'.");
                 return false;
             }
-            const securityToken = await getSecurityToken(weburl + 'hoat-dong-ngay?t=' + Date.now());
+            const securityToken = await getSecurityToken(weburl + 'bang-hoat-dong-ngay?t');
             const bodyData = `action=daily_activity_reward&stage=${stage}&security_token=${encodeURIComponent(securityToken)}`;
 
             try {
