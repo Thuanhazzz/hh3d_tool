@@ -1963,6 +1963,7 @@
          */
         async sendChallenge(userId, nonce) {
             console.log(`${this.logPrefix} 🎯 Đang gửi khiêu chiến đến người chơi ID: ${userId}...`);
+            const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
 
             const sendEndpoint = 'wp-json/luan-vo/v1/send-challenge';
             const sendBody = { target_user_id: userId };
@@ -1972,7 +1973,7 @@
                 console.log(`${this.logPrefix} 🎉 Gửi khiêu chiến thành công! Challenge ID: ${sendResult.data.challenge_id}`);
 
                 // Bước mới: Kiểm tra nếu đối thủ bật auto_accept
-                if (sendResult.data.auto_accept) {
+                if (sendResult.data.auto_accept || challengeMode === 'manual') {
                     console.log(`${this.logPrefix} ✨ Đối thủ tự động chấp nhận, đang hoàn tất trận đấu...`);
 
                     const approveEndpoint = 'wp-json/luan-vo/v1/auto-approve-challenge';
