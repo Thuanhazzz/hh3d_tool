@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HH3D Auto - Edited by Krizk
 // @namespace     HH3D_Tool_Tampermonkey
-// @version       5.3.2
+// @version       5.3.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động(sửa một chút so với bản gốc)
 // @author        Dr. Trune & Krizk
 // @match         https://hoathinh3d.li/*
@@ -5003,6 +5003,8 @@
                                         break;
                                     }
                                 }
+                                if(currentElement === '') currentElement = 'Không xác định';
+                                else currentElement = currentElement.slice(0, -2); // Bỏ đi mũi tên cuối cùng
                                 showNotification(`✅ Đã đổi ngũ hành 5 lần! ${currentElement}`, 'success');
                             }
                         }
