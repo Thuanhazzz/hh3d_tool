@@ -4796,6 +4796,8 @@
             if (localStorage.getItem('luanVoAutoRerunEnabled') === null) localStorage.setItem('luanVoAutoRerunEnabled', '0');
             if (localStorage.getItem('luanVoRerunDelayMinutes') === null) localStorage.setItem('luanVoRerunDelayMinutes', '2');
             if (localStorage.getItem('luanVoRerunMaxCount') === null) localStorage.setItem('luanVoRerunMaxCount', '200');
+            if (localStorage.getItem('luanVoReceiveReward') === null) localStorage.setItem('luanVoReceiveReward', '1');
+            if (localStorage.getItem('luanVoChangeElement') === null) localStorage.setItem('luanVoChangeElement', '0');
 
             // Tạo modal cài đặt
             const createSettingsModal = () => {
@@ -4815,6 +4817,8 @@
                 const enableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
                 const rerunDelayMinutes = localStorage.getItem('luanVoRerunDelayMinutes') || '1';
                 const rerunMaxCount = localStorage.getItem('luanVoRerunMaxCount') || '200';
+                const receiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
+                const changeElement = localStorage.getItem('luanVoChangeElement') === '1';
 
                 panel.innerHTML = `
                     <h3 style="margin: 0 0 12px 0; color: #4fc3f7; font-size: 18px;">⚙️ Cài đặt Luận Võ</h3>
@@ -4841,6 +4845,17 @@
                         <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
                             <input type="checkbox" id="luanvo-enable-auto-accept" ${enableAutoAccept ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
                             <span>✅ Auto chấp nhận</span>
+                        </label>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-receive-reward" ${receiveReward ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                            <span>🎁 Nhận thưởng</span>
+                        </label>
+                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-change-element" ${changeElement ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                            <span>🔄 Đổi ngũ hành (4 lần)</span>
                         </label>
                     </div>
 
@@ -4884,6 +4899,8 @@
                     const autoAcceptChecked = panel.querySelector('#luanvo-enable-auto-accept').checked;
                     const delayMinutes = panel.querySelector('#luanvo-rerun-delay').value;
                     const maxCount = panel.querySelector('#luanvo-rerun-max').value;
+                    const receiveRewardChecked = panel.querySelector('#luanvo-receive-reward').checked;
+                    const changeElementChecked = panel.querySelector('#luanvo-change-element').checked;
 
                     if (mode === 'manual' && !userId) {
                         showNotification('❌ Vui lòng nhập ID người chơi!', 'error');
@@ -4896,6 +4913,8 @@
                     localStorage.setItem('luanVoEnableAutoAccept', autoAcceptChecked ? '1' : '0');
                     localStorage.setItem('luanVoRerunDelayMinutes', delayMinutes);
                     localStorage.setItem('luanVoRerunMaxCount', maxCount);
+                    localStorage.setItem('luanVoReceiveReward', receiveRewardChecked ? '1' : '0');
+                    localStorage.setItem('luanVoChangeElement', changeElementChecked ? '1' : '0');
                     localStorage.setItem('luanVoAutoChallenge', '1');
 
                     showNotification('✅ Đã lưu cài đặt!', 'success');
@@ -4925,6 +4944,51 @@
                     
                     try {
                         await luanvo.doLuanVo(true);
+                        
+                        // ⭐ KIỂM TRA CHECKBOX NHẬN THƯỞNG
+                        const shouldReceiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
+                        if (shouldReceiveReward) {
+                            console.log('[Luận Võ Auto] 🎁 Đang nhận thưởng...');
+                            const nonce = await getNonce();
+                            if (nonce) {
+                                await luanvo.receiveReward(nonce);
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        }
+                        
+                        // ⭐ KIỂM TRA CHECKBOX ĐỔI NGŨ HÀNH
+                        const shouldChangeElement = localStorage.getItem('luanVoChangeElement') === '1';
+                        if (shouldChangeElement) {
+                            console.log('[Luận Võ Auto] 🔄 Đang đổi ngũ hành 4 lần...');
+                            const nonce = await getNonce();
+                            if (nonce) {
+                                const ajaxUrl = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
+                                const headers = {
+                                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                };
+                                
+                                for (let i = 1; i <= 4; i++) {
+                                    const payloadChange = new URLSearchParams({ action: 'change_user_element', nonce });
+                                    const changeData = await (await fetch(ajaxUrl, {
+                                        method: 'POST',
+                                        headers: headers,
+                                        body: payloadChange,
+                                        credentials: 'include'
+                                    })).json();
+                                    
+                                    if (changeData.success) {
+                                        const newElement = changeData.data.new_element;
+                                        console.log(`[Luận Võ Auto] 🔄 Đổi lần ${i}/4 -> ${newElement}`);
+                                        await new Promise(resolve => setTimeout(resolve, 500));
+                                    } else {
+                                        console.error(`[Luận Võ Auto] ❌ Lỗi khi đổi ngũ hành lần ${i}:`, changeData.message || 'Không xác định.');
+                                        break;
+                                    }
+                                }
+                                showNotification('✅ Đã đổi ngũ hành 4 lần!', 'success');
+                            }
+                        }
                         
                         // ⭐ Thông báo kết quả chạy thành công
                         showNotification(`✅ Luận Võ lần ${luanVoRunCount}/${maxCount} hoàn tất!`, 'success');
