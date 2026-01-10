@@ -4770,6 +4770,17 @@
             const luanVoButton = document.createElement('button');
             this.buttonMap.set('luanvo', luanVoButton);
             
+            // ⭐ BIẾN QUẢN LÝ AUTO-RERUN
+            let luanVoAutoRunTimer = null;
+            let luanVoRunCount = 0;
+            
+            // ⭐ NÚT START/STOP AUTO-RERUN
+            const luanVoAutoButton = document.createElement('button');
+            luanVoAutoButton.classList.add('custom-script-hoang-vuc-settings-btn');
+            luanVoAutoButton.textContent = '▶️';
+            luanVoAutoButton.title = 'Tự động chạy lại';
+            luanVoAutoButton.style.background = '#4caf50';
+            
             // ⭐ NÚT CÀI ĐẶT CHI TIẾT
             const luanVoSettingsButton = document.createElement('button');
             luanVoSettingsButton.classList.add('custom-script-hoang-vuc-settings-btn');
@@ -4777,152 +4788,214 @@
             luanVoSettingsButton.title = 'Cài đặt Luận Võ';
 
             // Khởi tạo giá trị mặc định
-            if (localStorage.getItem('luanVoAutoChallenge') === null) {
-                localStorage.setItem('luanVoAutoChallenge', '1');
-            }
-            if (localStorage.getItem('luanVoChallengeMode') === null) {
-                localStorage.setItem('luanVoChallengeMode', 'auto'); // auto hoặc manual
-            }
-            if (localStorage.getItem('luanVoTargetUserId') === null) {
-                localStorage.setItem('luanVoTargetUserId', '');
-            }
-            if (localStorage.getItem('luanVoJoinBattle') === null) {
-                localStorage.setItem('luanVoJoinBattle', '1');
-            }
-            if (localStorage.getItem('luanVoEnableAutoAccept') === null) {
-                localStorage.setItem('luanVoEnableAutoAccept', '1');
-            }
+            if (localStorage.getItem('luanVoAutoChallenge') === null) localStorage.setItem('luanVoAutoChallenge', '1');
+            if (localStorage.getItem('luanVoChallengeMode') === null) localStorage.setItem('luanVoChallengeMode', 'auto');
+            if (localStorage.getItem('luanVoTargetUserId') === null) localStorage.setItem('luanVoTargetUserId', '');
+            if (localStorage.getItem('luanVoJoinBattle') === null) localStorage.setItem('luanVoJoinBattle', '1');
+            if (localStorage.getItem('luanVoEnableAutoAccept') === null) localStorage.setItem('luanVoEnableAutoAccept', '1');
+            if (localStorage.getItem('luanVoAutoRerunEnabled') === null) localStorage.setItem('luanVoAutoRerunEnabled', '0');
+            if (localStorage.getItem('luanVoRerunDelayMinutes') === null) localStorage.setItem('luanVoRerunDelayMinutes', '2');
+            if (localStorage.getItem('luanVoRerunMaxCount') === null) localStorage.setItem('luanVoRerunMaxCount', '200');
 
             // Tạo modal cài đặt
             const createSettingsModal = () => {
-                // Xóa modal cũ nếu có
                 const oldModal = document.getElementById('luanvo-settings-modal');
                 if (oldModal) oldModal.remove();
 
                 const modal = document.createElement('div');
                 modal.id = 'luanvo-settings-modal';
-                modal.style.cssText = `
-                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0,0,0,0.7); z-index: 999999;
-                    display: flex; align-items: center; justify-content: center;
-                `;
+                modal.style.cssText = `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 999999; display: flex; align-items: center; justify-content: center;`;
 
                 const panel = document.createElement('div');
-                panel.style.cssText = `
-                    background: #2d2d2d; border-radius: 12px; padding: 20px;
-                    max-width: 500px; width: 90%; color: #fff;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-                `;
+                panel.style.cssText = `background: #2d2d2d; border-radius: 8px; padding: 15px; max-width: 420px; width: 90%; color: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.5);`;
 
-                // Lấy giá trị hiện tại
                 const challengeMode = localStorage.getItem('luanVoChallengeMode') || 'auto';
                 const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
                 const joinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
                 const enableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
+                const rerunDelayMinutes = localStorage.getItem('luanVoRerunDelayMinutes') || '1';
+                const rerunMaxCount = localStorage.getItem('luanVoRerunMaxCount') || '200';
 
                 panel.innerHTML = `
-                    <h3 style="margin: 0 0 20px 0; color: #4fc3f7; font-size: 20px;">⚙️ Cài đặt Luận Võ</h3>
+                    <h3 style="margin: 0 0 12px 0; color: #4fc3f7; font-size: 18px;">⚙️ Cài đặt Luận Võ</h3>
                     
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #ffd700;">
-                            🎯 Chế độ khiêu chiến:
-                        </label>
-                        <select id="luanvo-challenge-mode" style="width: 100%; padding: 8px; border-radius: 5px; background: #1a1a1a; color: #fff; border: 1px solid #555;">
-                            <option value="auto" ${challengeMode === 'auto' ? 'selected' : ''}>Tự động chọn đối thủ</option>
-                            <option value="manual" ${challengeMode === 'manual' ? 'selected' : ''}>Khiêu chiến theo ID cụ thể</option>
-                        </select>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #ffd700;">🎯 Chế độ:</label>
+                            <select id="luanvo-challenge-mode" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
+                                <option value="auto" ${challengeMode === 'auto' ? 'selected' : ''}>Tự động</option>
+                                <option value="manual" ${challengeMode === 'manual' ? 'selected' : ''}>Theo ID</option>
+                            </select>
+                        </div>
+                        <div id="target-user-container" style="${challengeMode === 'auto' ? 'display: none;' : ''}">
+                            <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #ffd700;">👤 ID:</label>
+                            <input type="text" id="luanvo-target-user-id" value="${targetUserId}" placeholder="Nhập ID..." style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
+                        </div>
                     </div>
 
-                    <div id="target-user-container" style="margin-bottom: 15px; ${challengeMode === 'auto' ? 'display: none;' : ''}">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #ffd700;">
-                            👤 ID người chơi muốn khiêu chiến:
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; font-size: 12px;">
+                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-join-battle" ${joinBattle ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                            <span>⚔️ Tham gia</span>
                         </label>
-                        <input type="text" id="luanvo-target-user-id" value="${targetUserId}" 
-                            placeholder="Nhập ID người chơi..."
-                            style="width: 100%; padding: 8px; border-radius: 5px; background: #1a1a1a; color: #fff; border: 1px solid #555;">
-                        <small style="color: #999; display: block; margin-top: 5px;">
-                            💡 Chỉ nhập 1 ID duy nhất. Script sẽ liên tục khiêu chiến người này.
-                        </small>
+                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" id="luanvo-enable-auto-accept" ${enableAutoAccept ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                            <span>✅ Auto chấp nhận</span>
+                        </label>
                     </div>
 
-                    <div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 5px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="luanvo-join-battle" ${joinBattle ? 'checked' : ''}
-                                style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
-                            <span style="color: #4fc3f7;">⚔️ Tham gia Luận Võ Đường (Bước 2)</span>
-                        </label>
-                        <small style="color: #999; display: block; margin-top: 5px; margin-left: 28px;">
-                            Tự động gọi API tham gia luận võ khi bắt đầu
-                        </small>
+                    <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
+                        <div style="color: #ff9800; font-weight: bold; margin-bottom: 8px; font-size: 13px;">🔄 Tự động chạy lại sau khi nhận thưởng:</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #aaa;">⏱️ Delay (phút):</label>
+                                <input type="number" id="luanvo-rerun-delay" value="${rerunDelayMinutes}" min="1" max="1440" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #aaa;">🔢 Số lần:</label>
+                                <input type="number" id="luanvo-rerun-max" value="${rerunMaxCount}" min="1" max="9999" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
+                            </div>
+                        </div>
+                        <small style="color: #888; display: block; margin-top: 4px; font-size: 11px;">💡 Dùng nút ▶️ bên ngoài để bật/tắt</small>
                     </div>
 
-                    <div style="margin-bottom: 20px; padding: 10px; background: #1a1a1a; border-radius: 5px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="luanvo-enable-auto-accept" ${enableAutoAccept ? 'checked' : ''}
-                                style="width: 18px; height: 18px; margin-right: 10px; cursor: pointer;">
-                            <span style="color: #4fc3f7;">✅ Bật tự động chấp nhận (Bước 3)</span>
-                        </label>
-                        <small style="color: #999; display: block; margin-top: 5px; margin-left: 28px;">
-                            Cho phép người khác khiêu chiến bạn tự động
-                        </small>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button id="luanvo-cancel-btn" style="padding: 10px 20px; border: none; border-radius: 5px; background: #555; color: #fff; cursor: pointer; font-weight: bold;">
-                            Hủy
-                        </button>
-                        <button id="luanvo-save-btn" style="padding: 10px 20px; border: none; border-radius: 5px; background: #4caf50; color: #fff; cursor: pointer; font-weight: bold;">
-                            💾 Lưu
-                        </button>
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px;">
+                        <button id="luanvo-cancel-btn" style="padding: 8px 16px; border: none; border-radius: 4px; background: #555; color: #fff; cursor: pointer; font-size: 12px;">Hủy</button>
+                        <button id="luanvo-save-btn" style="padding: 8px 16px; border: none; border-radius: 4px; background: #4caf50; color: #fff; cursor: pointer; font-weight: bold; font-size: 12px;">💾 Lưu</button>
                     </div>
                 `;
 
                 modal.appendChild(panel);
                 document.body.appendChild(modal);
 
-                // Logic ẩn/hiện ô nhập ID
                 const modeSelect = panel.querySelector('#luanvo-challenge-mode');
                 const targetContainer = panel.querySelector('#target-user-container');
                 modeSelect.addEventListener('change', () => {
                     targetContainer.style.display = modeSelect.value === 'manual' ? 'block' : 'none';
                 });
 
-                // Nút Hủy
                 panel.querySelector('#luanvo-cancel-btn').onclick = () => modal.remove();
+                modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 
-                // Click ngoài modal để đóng
-                modal.onclick = (e) => {
-                    if (e.target === modal) modal.remove();
-                };
-
-                // Nút Lưu
                 panel.querySelector('#luanvo-save-btn').onclick = () => {
                     const mode = panel.querySelector('#luanvo-challenge-mode').value;
                     const userId = panel.querySelector('#luanvo-target-user-id').value.trim();
                     const joinBattleChecked = panel.querySelector('#luanvo-join-battle').checked;
                     const autoAcceptChecked = panel.querySelector('#luanvo-enable-auto-accept').checked;
+                    const delayMinutes = panel.querySelector('#luanvo-rerun-delay').value;
+                    const maxCount = panel.querySelector('#luanvo-rerun-max').value;
 
-                    // Validate
                     if (mode === 'manual' && !userId) {
-                        showNotification('❌ Vui lòng nhập ID người chơi khi chọn chế độ thủ công!', 'error');
+                        showNotification('❌ Vui lòng nhập ID người chơi!', 'error');
                         return;
                     }
 
-                    // Lưu vào localStorage
                     localStorage.setItem('luanVoChallengeMode', mode);
                     localStorage.setItem('luanVoTargetUserId', userId);
                     localStorage.setItem('luanVoJoinBattle', joinBattleChecked ? '1' : '0');
                     localStorage.setItem('luanVoEnableAutoAccept', autoAcceptChecked ? '1' : '0');
-                    
-                    // Luôn bật autoChallenge khi lưu cài đặt
+                    localStorage.setItem('luanVoRerunDelayMinutes', delayMinutes);
+                    localStorage.setItem('luanVoRerunMaxCount', maxCount);
                     localStorage.setItem('luanVoAutoChallenge', '1');
 
-                    showNotification('✅ Đã lưu cài đặt Luận Võ!', 'success');
+                    showNotification('✅ Đã lưu cài đặt!', 'success');
                     modal.remove();
                 };
             };
 
+            // Logic Auto-Rerun
+            const startAutoRerun = async () => {
+                const delayMinutes = parseInt(localStorage.getItem('luanVoRerunDelayMinutes') || '30');
+                const maxCount = parseInt(localStorage.getItem('luanVoRerunMaxCount') || '10');
+                
+                luanVoRunCount = 0;
+                
+                const runCycle = async () => {
+                    if (luanVoRunCount >= maxCount) {
+                        showNotification(`✅ Đã chạy đủ ${maxCount} lần. Dừng lại.`, 'success');
+                        stopAutoRerun();
+                        return;
+                    }
+                    
+                    luanVoRunCount++;
+                    console.log(`[Luận Võ Auto] 🔄 Lần ${luanVoRunCount}/${maxCount}`);
+                    
+                    luanVoButton.disabled = true;
+                    luanVoButton.textContent = `⏳ Đang chạy lần ${luanVoRunCount}/${maxCount}`;
+                    
+                    try {
+                        await luanvo.doLuanVo(true);
+                        
+                        // ⭐ Thông báo kết quả chạy thành công
+                        showNotification(`✅ Luận Võ lần ${luanVoRunCount}/${maxCount} hoàn tất!`, 'success');
+                        
+                        if (luanVoRunCount < maxCount) {
+                            const nextRunTime = new Date(Date.now() + delayMinutes * 60000);
+                            showNotification(`⏰ Sẽ chạy lần ${luanVoRunCount + 1}/${maxCount} lúc ${nextRunTime.toLocaleTimeString('vi-VN')}`, 'info');
+                            
+                            // Cập nhật text nút với số lần đã chạy
+                            luanVoButton.textContent = `Luận Võ (${luanVoRunCount}/${maxCount})`;
+                            luanVoButton.disabled = false;
+                            
+                            luanVoAutoRunTimer = setTimeout(runCycle, delayMinutes * 60000);
+                        } else {
+                            showNotification(`🎉 Hoàn thành ${maxCount} lần chạy Luận Võ!`, 'success');
+                            stopAutoRerun();
+                        }
+                    } catch (error) {
+                        console.error('[Luận Võ Auto] Lỗi:', error);
+                        showNotification(`❌ Luận Võ lần ${luanVoRunCount}/${maxCount} thất bại: ${error.message || 'Lỗi không xác định'}`, 'error');
+                        stopAutoRerun();
+                    } finally {
+                        if (luanVoRunCount >= maxCount || !luanVoAutoRunTimer) {
+                            luanVoButton.textContent = 'Luận Võ';
+                            luanVoButton.disabled = false;
+                            this.updateButtonState('luanvo');
+                        }
+                    }
+                };
+                
+                showNotification(`🚀 Bắt đầu auto-rerun Luận Võ: ${maxCount} lần, mỗi ${delayMinutes} phút`, 'success');
+                runCycle();
+            };
+            
+            const stopAutoRerun = () => {
+                if (luanVoAutoRunTimer) {
+                    clearTimeout(luanVoAutoRunTimer);
+                    luanVoAutoRunTimer = null;
+                }
+                const wasRunning = luanVoRunCount > 0;
+                luanVoRunCount = 0;
+                localStorage.setItem('luanVoAutoRerunEnabled', '0');
+                luanVoAutoButton.textContent = '▶️';
+                luanVoAutoButton.title = 'Bật tự động chạy lại';
+                luanVoAutoButton.style.background = '#4caf50';
+                luanVoButton.textContent = 'Luận Võ';
+                luanVoButton.disabled = false;
+                
+                if (wasRunning) {
+                    showNotification('⏹️ Đã dừng auto-rerun Luận Võ', 'info');
+                }
+            };
+            
+            // Sự kiện nút Auto
+            luanVoAutoButton.addEventListener('click', () => {
+                const isRunning = localStorage.getItem('luanVoAutoRerunEnabled') === '1';
+                
+                if (isRunning) {
+                    stopAutoRerun();
+                } else {
+                    localStorage.setItem('luanVoAutoRerunEnabled', '1');
+                    luanVoAutoButton.textContent = '⏸️';
+                    luanVoAutoButton.title = 'Dừng tự động chạy lại';
+                    luanVoAutoButton.style.background = '#f44336';
+                    startAutoRerun();
+                }
+            });
+
             luanVoSettingsButton.addEventListener('click', createSettingsModal);
+            
+            parentGroup.appendChild(luanVoAutoButton);
             parentGroup.appendChild(luanVoSettingsButton);
 
             luanVoButton.textContent = 'Luận Võ';
@@ -4931,7 +5004,6 @@
                 luanVoButton.disabled = true;
                 luanVoButton.textContent = 'Đang xử lý...';
                 try {
-                    // Luôn dùng autoChallenge = true vì đã có cài đặt chi tiết
                     await luanvo.doLuanVo(true);
                 } finally {
                     luanVoButton.textContent = 'Luận Võ';
