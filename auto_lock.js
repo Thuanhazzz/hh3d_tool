@@ -1721,28 +1721,28 @@
 
         async getNonceAndRemainingAttacks(url) {
             const logPrefix = '[Hoang Vực]';
-                console.log(`${logPrefix} ▶️ Đang tải trang từ ${url}...`);
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    const html = await response.text();
+            console.log(`${logPrefix} ▶️ Đang tải trang từ ${url}...`);
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const html = await response.text();
 
-                    // Regex 1: lấy số lượt đánh
-                    const attacksMatch = html.match(/<div class="remaining-attacks">Lượt đánh còn lại:\s*(\d+)<\/div>/);
-                    const remainingAttacks = attacksMatch ? parseInt(attacksMatch[1], 10) : null;
+                // Regex 1: lấy số lượt đánh
+                const attacksMatch = html.match(/<div class="remaining-attacks">Lượt đánh còn lại:\s*(\d+)<\/div>/);
+                const remainingAttacks = attacksMatch ? parseInt(attacksMatch[1], 10) : null;
 
-                    // Regex 2: lấy nonce
-                    const nonceMatch = html.match(/var ajax_boss_nonce = '([a-f0-9]+)'/);
-                    const nonce = nonceMatch ? nonceMatch[1] : null;
+                // Regex 2: lấy nonce
+                const nonceMatch = html.match(/var ajax_boss_nonce = '([a-f0-9]+)'/);
+                const nonce = nonceMatch ? nonceMatch[1] : null;
 
-                    console.log(`${logPrefix} ✅ Lấy dữ liệu thành công.`);
-                    return { remainingAttacks, nonce };
+                console.log(`${logPrefix} ✅ Lấy dữ liệu thành công.`);
+                return { remainingAttacks, nonce };
 
-                } catch (e) {
-                    console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất dữ liệu:`, e);
-                    return { remainingAttacks: null, nonce: null };
-                }
+            } catch (e) {
+                console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất dữ liệu:`, e);
+                return { remainingAttacks: null, nonce: null };
             }
+        }
 
 
         /**
@@ -4924,11 +4924,29 @@
 
             // Logic Auto-Rerun
             const startAutoRerun = async () => {
-                const delayMinutes = parseInt(localStorage.getItem('luanVoRerunDelayMinutes') || '30');
-                const maxCount = parseInt(localStorage.getItem('luanVoRerunMaxCount') || '10');
+                // ⭐ BƯỚC 1: KIỂM TRA LUẬN VÕ ĐÃ HOÀN THÀNH CHƯA
+                const accountId = await getAccountId();
+                if (!accountId) {
+                    showNotification('❌ Không lấy được Account ID!', 'error');
+                    return;
+                }
+                
+                const isDone = taskTracker.isTaskDone(accountId, 'luanvo');
+                if (!isDone) {
+                    showNotification('⚠️ Luận Võ chưa hoàn thành! Vui lòng hoàn thành Luận Võ trước khi bật tự động chạy lại.', 'warn');
+                    stopAutoRerun();
+                    return;
+                }
+                
+                // ⭐ BƯỚC 2: ĐỌC CÀI ĐẶT
+                const delayMinutes = parseInt(localStorage.getItem('luanVoRerunDelayMinutes') || '1');
+                const maxCount = parseInt(localStorage.getItem('luanVoRerunMaxCount') || '200');
+                const shouldReceiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
+                const shouldChangeElement = localStorage.getItem('luanVoChangeElement') === '1';
                 
                 luanVoRunCount = 0;
                 
+                // ⭐ BƯỚC 3: VÒNG LẶP CHẠY LIÊN TỤC
                 const runCycle = async () => {
                     if (luanVoRunCount >= maxCount) {
                         showNotification(`✅ Đã chạy đủ ${maxCount} lần. Dừng lại.`, 'success');
@@ -4943,10 +4961,7 @@
                     luanVoButton.textContent = `⏳ Đang chạy lần ${luanVoRunCount}/${maxCount}`;
                     
                     try {
-                        await luanvo.doLuanVo(true);
-                        
-                        // ⭐ KIỂM TRA CHECKBOX NHẬN THƯỞNG
-                        const shouldReceiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
+                        // ⭐ NHẬN THƯỞNG (nếu checkbox bật)
                         if (shouldReceiveReward) {
                             console.log('[Luận Võ Auto] 🎁 Đang nhận thưởng...');
                             const nonce = await getNonce();
@@ -4956,11 +4971,11 @@
                             }
                         }
                         
-                        // ⭐ KIỂM TRA CHECKBOX ĐỔI NGŨ HÀNH
-                        const shouldChangeElement = localStorage.getItem('luanVoChangeElement') === '1';
+                        // ⭐ ĐỔI NGŨ HÀNH 4 LẦN (nếu checkbox bật)
                         if (shouldChangeElement) {
                             console.log('[Luận Võ Auto] 🔄 Đang đổi ngũ hành 4 lần...');
-                            const nonce = await getNonce();
+                            const hoangVucUrl = `${weburl}hoang-vuc?t`;
+                            const { nonce } = await this.getNonceAndRemainingAttacks(hoangVucUrl);
                             if (nonce) {
                                 const ajaxUrl = weburl + 'wp-content/themes/halimmovies-child/hh3d-ajax.php';
                                 const headers = {
@@ -4991,7 +5006,7 @@
                         }
                         
                         // ⭐ Thông báo kết quả chạy thành công
-                        showNotification(`✅ Luận Võ lần ${luanVoRunCount}/${maxCount} hoàn tất!`, 'success');
+                        showNotification(`✅ Hoàn tất lần ${luanVoRunCount}/${maxCount}!`, 'success');
                         
                         if (luanVoRunCount < maxCount) {
                             const nextRunTime = new Date(Date.now() + delayMinutes * 60000);
@@ -5003,12 +5018,12 @@
                             
                             luanVoAutoRunTimer = setTimeout(runCycle, delayMinutes * 60000);
                         } else {
-                            showNotification(`🎉 Hoàn thành ${maxCount} lần chạy Luận Võ!`, 'success');
+                            showNotification(`🎉 Hoàn thành ${maxCount} lần chạy!`, 'success');
                             stopAutoRerun();
                         }
                     } catch (error) {
                         console.error('[Luận Võ Auto] Lỗi:', error);
-                        showNotification(`❌ Luận Võ lần ${luanVoRunCount}/${maxCount} thất bại: ${error.message || 'Lỗi không xác định'}`, 'error');
+                        showNotification(`❌ Lần ${luanVoRunCount}/${maxCount} thất bại: ${error.message || 'Lỗi không xác định'}`, 'error');
                         stopAutoRerun();
                     } finally {
                         if (luanVoRunCount >= maxCount || !luanVoAutoRunTimer) {
@@ -5019,7 +5034,7 @@
                     }
                 };
                 
-                showNotification(`🚀 Bắt đầu auto-rerun Luận Võ: ${maxCount} lần, mỗi ${delayMinutes} phút`, 'success');
+                showNotification(`🚀 Bắt đầu auto-rerun: ${maxCount} lần, mỗi ${delayMinutes} phút`, 'success');
                 runCycle();
             };
             
@@ -5077,6 +5092,30 @@
 
             parentGroup.appendChild(luanVoButton);
             this.updateButtonState('luanvo')
+        }
+        async getNonceAndRemainingAttacks(url) {
+            const logPrefix = '[Hoang Vực]';
+            console.log(`${logPrefix} ▶️ Đang tải trang từ ${url}...`);
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const html = await response.text();
+
+                // Regex 1: lấy số lượt đánh
+                const attacksMatch = html.match(/<div class="remaining-attacks">Lượt đánh còn lại:\s*(\d+)<\/div>/);
+                const remainingAttacks = attacksMatch ? parseInt(attacksMatch[1], 10) : null;
+
+                // Regex 2: lấy nonce
+                const nonceMatch = html.match(/var ajax_boss_nonce = '([a-f0-9]+)'/);
+                const nonce = nonceMatch ? nonceMatch[1] : null;
+
+                console.log(`${logPrefix} ✅ Lấy dữ liệu thành công.`);
+                return { remainingAttacks, nonce };
+
+            } catch (e) {
+                console.error(`${logPrefix} ❌ Lỗi khi tải trang hoặc trích xuất dữ liệu:`, e);
+                return { remainingAttacks: null, nonce: null };
+            }
         }
 
         // Phương thức tạo menu "Autorun"
