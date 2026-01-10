@@ -4794,7 +4794,7 @@
             if (localStorage.getItem('luanVoJoinBattle') === null) localStorage.setItem('luanVoJoinBattle', '1');
             if (localStorage.getItem('luanVoEnableAutoAccept') === null) localStorage.setItem('luanVoEnableAutoAccept', '1');
             if (localStorage.getItem('luanVoAutoRerunEnabled') === null) localStorage.setItem('luanVoAutoRerunEnabled', '0');
-            if (localStorage.getItem('luanVoRerunDelayMinutes') === null) localStorage.setItem('luanVoRerunDelayMinutes', '2');
+            if (localStorage.getItem('luanVoRerunDelaySeconds') === null) localStorage.setItem('luanVoRerunDelaySeconds', '120');
             if (localStorage.getItem('luanVoRerunMaxCount') === null) localStorage.setItem('luanVoRerunMaxCount', '200');
             if (localStorage.getItem('luanVoReceiveReward') === null) localStorage.setItem('luanVoReceiveReward', '1');
             if (localStorage.getItem('luanVoChangeElement') === null) localStorage.setItem('luanVoChangeElement', '0');
@@ -4815,7 +4815,7 @@
                 const targetUserId = localStorage.getItem('luanVoTargetUserId') || '';
                 const joinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
                 const enableAutoAccept = localStorage.getItem('luanVoEnableAutoAccept') === '1';
-                const rerunDelayMinutes = localStorage.getItem('luanVoRerunDelayMinutes') || '1';
+                const rerunDelaySeconds = localStorage.getItem('luanVoRerunDelaySeconds') || '120';
                 const rerunMaxCount = localStorage.getItem('luanVoRerunMaxCount') || '200';
                 const receiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
                 const changeElement = localStorage.getItem('luanVoChangeElement') === '1';
@@ -4848,28 +4848,27 @@
                         </label>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; font-size: 12px;">
-                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" id="luanvo-receive-reward" ${receiveReward ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
-                            <span>🎁 Nhận thưởng</span>
-                        </label>
-                        <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" id="luanvo-change-element" ${changeElement ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
-                            <span>🔄 Đổi ngũ hành (4 lần)</span>
-                        </label>
-                    </div>
-
                     <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 10px;">
                         <div style="color: #ff9800; font-weight: bold; margin-bottom: 8px; font-size: 13px;">🔄 Tự động chạy lại sau khi nhận thưởng:</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                             <div>
-                                <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #aaa;">⏱️ Delay (phút):</label>
-                                <input type="number" id="luanvo-rerun-delay" value="${rerunDelayMinutes}" min="1" max="1440" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
+                                <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #aaa;">⏱️ Delay (giây):</label>
+                                <input type="number" id="luanvo-rerun-delay" value="${rerunDelaySeconds}" min="1" max="3600" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
                             </div>
                             <div>
                                 <label style="display: block; margin-bottom: 4px; font-size: 12px; color: #aaa;">🔢 Số lần:</label>
                                 <input type="number" id="luanvo-rerun-max" value="${rerunMaxCount}" min="1" max="9999" style="width: 100%; padding: 6px; border-radius: 4px; background: #1a1a1a; color: #fff; border: 1px solid #555; font-size: 12px;">
                             </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; font-size: 12px;">
+                            <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" id="luanvo-receive-reward" ${receiveReward ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                                <span>🎁 Nhận thưởng</span>
+                            </label>
+                            <label style="display: flex; align-items: center; padding: 6px 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" id="luanvo-change-element" ${changeElement ? 'checked' : ''} style="width: 14px; height: 14px; margin-right: 6px;">
+                                <span>🔄 Đổi ngũ hành (4 lần)</span>
+                            </label>
                         </div>
                         <small style="color: #888; display: block; margin-top: 4px; font-size: 11px;">💡 Dùng nút ▶️ bên ngoài để bật/tắt</small>
                     </div>
@@ -4897,7 +4896,7 @@
                     const userId = panel.querySelector('#luanvo-target-user-id').value.trim();
                     const joinBattleChecked = panel.querySelector('#luanvo-join-battle').checked;
                     const autoAcceptChecked = panel.querySelector('#luanvo-enable-auto-accept').checked;
-                    const delayMinutes = panel.querySelector('#luanvo-rerun-delay').value;
+                    const delaySeconds = panel.querySelector('#luanvo-rerun-delay').value;
                     const maxCount = panel.querySelector('#luanvo-rerun-max').value;
                     const receiveRewardChecked = panel.querySelector('#luanvo-receive-reward').checked;
                     const changeElementChecked = panel.querySelector('#luanvo-change-element').checked;
@@ -4911,7 +4910,7 @@
                     localStorage.setItem('luanVoTargetUserId', userId);
                     localStorage.setItem('luanVoJoinBattle', joinBattleChecked ? '1' : '0');
                     localStorage.setItem('luanVoEnableAutoAccept', autoAcceptChecked ? '1' : '0');
-                    localStorage.setItem('luanVoRerunDelayMinutes', delayMinutes);
+                    localStorage.setItem('luanVoRerunDelaySeconds', delaySeconds);
                     localStorage.setItem('luanVoRerunMaxCount', maxCount);
                     localStorage.setItem('luanVoReceiveReward', receiveRewardChecked ? '1' : '0');
                     localStorage.setItem('luanVoChangeElement', changeElementChecked ? '1' : '0');
@@ -4939,7 +4938,7 @@
                 }
                 
                 // ⭐ BƯỚC 2: ĐỌC CÀI ĐẶT
-                const delayMinutes = parseInt(localStorage.getItem('luanVoRerunDelayMinutes') || '1');
+                const delaySeconds = parseInt(localStorage.getItem('luanVoRerunDelaySeconds') || '120');
                 const maxCount = parseInt(localStorage.getItem('luanVoRerunMaxCount') || '200');
                 const shouldReceiveReward = localStorage.getItem('luanVoReceiveReward') === '1';
                 const shouldChangeElement = localStorage.getItem('luanVoChangeElement') === '1';
@@ -5009,14 +5008,14 @@
                         showNotification(`✅ Hoàn tất lần ${luanVoRunCount}/${maxCount}!`, 'success');
                         
                         if (luanVoRunCount < maxCount) {
-                            const nextRunTime = new Date(Date.now() + delayMinutes * 60000);
+                            const nextRunTime = new Date(Date.now() + delaySeconds * 1000);
                             showNotification(`⏰ Sẽ chạy lần ${luanVoRunCount + 1}/${maxCount} lúc ${nextRunTime.toLocaleTimeString('vi-VN')}`, 'info');
                             
                             // Cập nhật text nút với số lần đã chạy
                             luanVoButton.textContent = `Luận Võ (${luanVoRunCount}/${maxCount})`;
                             luanVoButton.disabled = false;
                             
-                            luanVoAutoRunTimer = setTimeout(runCycle, delayMinutes * 60000);
+                            luanVoAutoRunTimer = setTimeout(runCycle, delaySeconds * 1000);
                         } else {
                             showNotification(`🎉 Hoàn thành ${maxCount} lần chạy!`, 'success');
                             stopAutoRerun();
@@ -5034,7 +5033,7 @@
                     }
                 };
                 
-                showNotification(`🚀 Bắt đầu auto-rerun: ${maxCount} lần, mỗi ${delayMinutes} phút`, 'success');
+                showNotification(`🚀 Bắt đầu auto-rerun: ${maxCount} lần, mỗi ${delaySeconds} giây`, 'success');
                 runCycle();
             };
             
