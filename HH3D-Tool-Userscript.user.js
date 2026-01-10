@@ -22,7 +22,7 @@
     // ============================================================================
     const Logger = {
         logs: [],
-        maxLogs: 2000,
+        maxLogs: 500, // ⭐ Giảm từ 2000 xuống 500 để tiết kiệm bộ nhớ
         
         _addLog(type, ...args) {
             const timestamp = new Date().toLocaleTimeString('vi-VN');
@@ -35,8 +35,9 @@
             }).join(' ');
             
             this.logs.push({ type, timestamp, message });
+            // ⭐ Xóa logs cũ để tiết kiệm bộ nhớ
             if (this.logs.length > this.maxLogs) {
-                this.logs.shift();
+                this.logs.splice(0, this.logs.length - this.maxLogs);
             }
             
             // Update UI if log panel exists
@@ -206,9 +207,20 @@ async function bypassCloudflareChallenge(url, maxWaitTime = 30000) {
     let resolved = false;
     
     const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (checkInterval) clearInterval(checkInterval);
-      if (iframe.parentNode) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (checkInterval) {
+        clearInterval(checkInterval);
+        checkInterval = null;
+      }
+      // ⭐ Clear event handlers để tránh memory leak
+      if (iframe) {
+        iframe.onload = null;
+        iframe.onerror = null;
+      }
+      if (iframe && iframe.parentNode) {
         iframe.parentNode.removeChild(iframe);
       }
     };
@@ -5721,16 +5733,19 @@ class TaskScheduler {
         this.isRunning = false;
         await Storage.set({ isRunning: false });
         
+        // ⭐ Clear interval
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
             this.checkInterval = null;
         }
         
-        // Clear all timeouts
-        rerunTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        // ⭐ Clear all rerun timeouts
+        rerunTimeouts.forEach((timeoutId) => {
+            clearTimeout(timeoutId);
+        });
         rerunTimeouts.clear();
         
-        // Clear fetch queue
+        // ⭐ Clear fetch queue
         clearFetchQueue();
         
         log('⏹️ Scheduler stopped');
@@ -5782,14 +5797,37 @@ class TaskScheduler {
     }
 
     async checkReruns() {
-        if (!this.isRunning) return;
+        // ⭐ QUAN TRỌNG: Kiểm tra isRunning từ storage thay vì this.isRunning
+        // Để đảm bảo vẫn chạy ngay cả khi đóng modal
+        const data = await Storage.get(['isRunning', 'taskResults', 'taskStates']);
+        if (!data.isRunning) {
+            log('⏸️ checkReruns: isRunning = false, skipping...');
+            return;
+        }
         
+        const taskResults = data.taskResults || {};
+        const taskStates = data.taskStates || {};
         const now = Date.now();
+        
         for (const key of this.runningTasks) {
-            const result = this.taskResults[key];
+            // Kiểm tra task còn enabled không
+            if (!taskStates[key]) {
+                // log(`⏭️ Skip rerun ${key} - task disabled`);
+                continue;
+            }
+            
+            const result = taskResults[key];
+            
+            // Kiểm tra status có phải 'done' không
+            if (result?.status === 'done') {
+                // log(`⏭️ Skip rerun ${key} - status is done`);
+                continue;
+            }
+            
+            // Kiểm tra thời gian rerun
             if (result && result.nextTime && result.nextTime <= now) {
                 log(`⏰ Time to rerun ${key}`);
-                await this.runTask(key);
+                await this.runTask(key, true); // ⭐ skipRunningCheck = true để chạy ngay cả khi modal đóng
                 await wait(2000);
             }
         }
@@ -6798,19 +6836,48 @@ function showCustomModal(title, tabsData = {}, options = {}) {
 
   // Click outside to close
   if (allowClickOutside) {
-    modal.onclick = (e) => {
+    const clickOutsideHandler = (e) => {
       if (e.target === modal) {
         closeModal();
       }
     };
+    modal.onclick = clickOutsideHandler;
+    // ⭐ Lưu handler để cleanup sau
+    modal._clickOutsideHandler = clickOutsideHandler;
   }
 
   // Close button handler
   const closeModal = () => {
-    if (modal._autoCloseTimer) clearTimeout(modal._autoCloseTimer);
-    if (modal._countdownTimer) clearInterval(modal._countdownTimer);
+    // ⭐ Clear timers
+    if (modal._autoCloseTimer) {
+      clearTimeout(modal._autoCloseTimer);
+      modal._autoCloseTimer = null;
+    }
+    if (modal._countdownTimer) {
+      clearInterval(modal._countdownTimer);
+      modal._countdownTimer = null;
+    }
+    
+    // ⭐ Remove event listeners
+    if (modal._clickOutsideHandler) {
+      modal.onclick = null;
+      modal._clickOutsideHandler = null;
+    }
+    if (closeBtn.onclick) {
+      closeBtn.onclick = null;
+    }
+    
+    // ⭐ Clear tab buttons event listeners
+    Object.values(tabButtons).forEach(btn => {
+      if (btn.onclick) btn.onclick = null;
+    });
+    
     modal.style.animation = 'fadeOut 0.2s ease-out';
-    setTimeout(() => modal.remove(), 200);
+    setTimeout(() => {
+      if (modal.parentNode) {
+        modal.remove();
+      }
+    }, 200);
   };
 
   closeBtn.onclick = closeModal;
@@ -7951,6 +8018,7 @@ function updateUIPanel() {
 
 // Initialize everything when DOM is ready
 let scheduler;
+let uiUpdateInterval = null; // ⭐ Lưu interval để cleanup
 
 function initializeHH3DTool() {
     console.log('🚀 Initializing HH3D Tool...');
@@ -7991,8 +8059,18 @@ function initializeHH3DTool() {
         console.log('✅ HH3D Tool Userscript Ready!');
     })();
     
-    // Auto update UI every second
-    setInterval(updateUIPanel, 1000);
+    // ⭐ Auto update UI every 2 seconds (giảm từ 1s để tiết kiệm tài nguyên)
+    // Clear old interval nếu có
+    if (uiUpdateInterval) {
+        clearInterval(uiUpdateInterval);
+    }
+    uiUpdateInterval = setInterval(() => {
+        // Chỉ update UI nếu panel đang mở
+        const panel = document.getElementById('hh3d-tool-panel');
+        if (panel && panel.style.display !== 'none') {
+            updateUIPanel();
+        }
+    }, 2000);
 }
 
 // Wait for DOM to be ready
