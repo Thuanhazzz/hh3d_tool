@@ -4972,9 +4972,9 @@
                             }
                         }
                         
-                        // ⭐ ĐỔI NGŨ HÀNH 4 LẦN (nếu checkbox bật)
+                        // ⭐ ĐỔI NGŨ HÀNH 5 LẦN (nếu checkbox bật)
                         if (shouldChangeElement) {
-                            console.log('[Luận Võ Auto] 🔄 Đang đổi ngũ hành 4 lần...');
+                            console.log('[Luận Võ Auto] 🔄 Đang đổi ngũ hành 5 lần...');
                             const hoangVucUrl = `${weburl}hoang-vuc?t`;
                             const { nonce } = await this.getNonceAndRemainingAttacks(hoangVucUrl);
                             if (nonce) {
@@ -4982,14 +4982,14 @@
                                 const headers = {
                                     'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                                     'X-Requested-With': 'XMLHttpRequest',
+                                    "referer": hoangVucUrl,
                                 };
                                 let currentElement = '';
                                 for (let i = 1; i <= 5; i++) {
-                                    const payloadChange = new URLSearchParams({ action: 'change_user_element', nonce });
                                     const changeData = await (await fetch(ajaxUrl, {
                                         method: 'POST',
                                         headers: headers,
-                                        body: payloadChange,
+                                        body: `action=change_user_element&nonce=${nonce}`,
                                         credentials: 'include'
                                     })).json();
                                     
