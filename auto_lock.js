@@ -510,6 +510,15 @@
                 console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
             }
         }
+        markTaskUndone(accountId, taskName) {
+            const accountData = this.getAccountData(accountId);
+            if (accountData[taskName]) {
+                accountData[taskName].done = false;
+                this.saveData();
+            } else {
+                console.error(`[TaskTracker] Nhiệm vụ "${taskName}" không tồn tại cho tài khoản "${accountId}"`);
+            }
+        }
 
         /**
          * Điều chỉnh thời gian của một nhiệm vụ
@@ -2022,6 +2031,7 @@
         async receiveReward(nonce) {
             console.log(`${this.logPrefix} 🎁 Đang gửi yêu cầu nhận thưởng...`);
 
+            const shouldJoinBattle = localStorage.getItem('luanVoJoinBattle') === '1';
             const endpoint = 'wp-json/luan-vo/v1/receive-reward';
             const body = {};
 
@@ -2032,11 +2042,16 @@
                 }
                 if (response.success === true) {
                     showNotification(`🎉 Luận võ: ${response.message}`, 'success');
-                    taskTracker.markTaskDone(accountId, 'luanvo');
+                    if (shouldJoinBattle) {
+                        taskTracker.markTaskDone(accountId, 'luanvo');
+                    } else {
+                        taskTracker.markTaskUndone(accountId, 'luanvo');
+                    }
+                    // taskTracker.markTaskDone(accountId, 'luanvo');
                     return;
                 } else if (response.message === "Đạo hữu đã nhận thưởng trong ngày hôm nay.") {
                     showNotification('🎁 Bạn đã nhận thưởng Luận Võ hôm nay rồi!', 'info')
-                    taskTracker.markTaskDone(accountId, 'luanvo');
+                    // taskTracker.markTaskDone(accountId, 'luanvo');
                     return;
                 } else {
                     const errorMessage = response.message || 'Lỗi không xác định khi nhận thưởng.';
