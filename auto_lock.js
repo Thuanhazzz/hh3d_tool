@@ -5021,6 +5021,8 @@
                 };
                 
                 showNotification(`🚀 Bắt đầu auto-rerun: ${maxCount} lần, mỗi ${delaySeconds} giây`, 'success');
+                // ⭐ Khởi tạo timer = true để đánh dấu đang chạy trước khi gọi runCycle() lần đầu
+                luanVoAutoRunTimer = true;
                 runCycle();
             };
             
