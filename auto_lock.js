@@ -4,7 +4,7 @@
 // @version       5.3.3
 // @description   Thêm menu tùy chỉnh với các liên kết hữu ích và các chức năng tự động(sửa một chút so với bản gốc)
 // @author        Dr. Trune & Krizk
-// @match         https://hoathinh3d.moi/*
+// @match         https://hoathinh3d.li/*
 // @require       https://cdn.jsdelivr.net/npm/sweetalert2@11.26.12/dist/sweetalert2.all.min.js
 // @run-at        document-start
 // @grant         unsafeWindow
@@ -2042,19 +2042,11 @@
                 }
                 if (response.success === true) {
                     showNotification(`🎉 Luận võ: ${response.message}`, 'success');
-                    if (shouldJoinBattle) {
-                        taskTracker.markTaskDone(accountId, 'luanvo');
-                    } else {
-                        taskTracker.markTaskUndone(accountId, 'luanvo');
-                    }
+                    taskTracker.markTaskDone(accountId, 'luanvo');
                     return;
                 } else if (response.message === "Đạo hữu đã nhận thưởng trong ngày hôm nay.") {
                     showNotification('🎁 Bạn đã nhận thưởng Luận Võ hôm nay rồi!', 'info')
-                    if (shouldJoinBattle) {
-                        taskTracker.markTaskDone(accountId, 'luanvo');
-                    } else {
-                        taskTracker.markTaskUndone(accountId, 'luanvo');
-                    }
+                    taskTracker.markTaskDone(accountId, 'luanvo');
                     return;
                 } else {
                     const errorMessage = response.message || 'Lỗi không xác định khi nhận thưởng.';
